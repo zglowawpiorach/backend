@@ -1,0 +1,1 @@
+WebApp w formie wizytówki personalnej promującej Artyste + E-Commerce z możliwością składania zamówień i bramką płatności + Pełen backend DjangoAPI + Wagtail CMS do zarządzania produktami i obsługiwania płatności
