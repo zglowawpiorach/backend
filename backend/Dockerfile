@@ -35,7 +35,7 @@ COPY pyproject.toml poetry.lock* ./
 
 # Install the project requirements (without creating a virtualenv in Docker)
 RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi --only main
+    && poetry install --no-interaction --no-ansi --only main --no-root
 
 # Set this directory to be owned by the "wagtail" user.
 RUN chown wagtail:wagtail /app
