@@ -1,0 +1,307 @@
+# Piorka E-Commerce Platform - Claude Instructions
+
+## Project Overview
+Piorka is a full-stack e-commerce solution for artist portfolios with integrated product ordering and payment processing. The platform combines content management capabilities with e-commerce functionality.
+
+**Stack:**
+- Backend: Django 5.2.8 + Wagtail 7.2.1 + PostgreSQL
+- Frontend: React 19.2.0 + TypeScript 5.9.3 + Vite 7.2.4 + TailwindCSS 4.1.17
+- Deployment: Docker + Nginx + Gunicorn
+- Payments: Stripe integration
+
+## Project Structure
+
+```
+piorka/
+├── backend/              # Django + Wagtail API & CMS
+│   ├── core/            # Project settings (base, dev, production)
+│   ├── home/            # Home pages & Product models
+│   └── search/          # Search functionality
+├── frontend/            # React + TypeScript SPA
+│   └── src/            # React components & assets
+└── .venv/              # Python virtual environment
+```
+
+## Development Guidelines
+
+### Backend Development (Django + Wagtail)
+
+**Environment Setup:**
+- Python 3.13+ required
+- Use Poetry for dependency management: `poetry install`
+- Activate virtual environment: `poetry shell` or use `.venv`
+- Database: PostgreSQL (configured via environment variables)
+
+**Settings Structure:**
+- `core/settings/base.py` - Shared configuration for all environments
+- `core/settings/dev.py` - Development settings (DEBUG=True, console email)
+- `core/settings/production.py` - Production settings (static file versioning, debug off)
+- Use `DJANGO_SETTINGS_MODULE` environment variable to switch settings
+
+**Key Models:**
+- `Product` (Wagtail Snippet in home/models.py):
+  - Fields: name, slug, description, price, stripe_price_id, stripe_product_id, active, image
+  - Managed through Wagtail admin at `/admin/`
+  - Includes Stripe integration fields for payment processing
+- `HomePage` (Wagtail Page):
+  - Landing page model, inherits from wagtail.models.Page
+
+**Running Backend:**
+```bash
+cd backend
+poetry install                          # Install dependencies
+poetry run python manage.py migrate    # Run migrations
+poetry run python manage.py runserver  # Start dev server (port 8000)
+```
+
+**Testing:**
+```bash
+poetry run python manage.py test       # Run test suite
+```
+
+**Code Quality:**
+- Use Black for formatting: `poetry run black .`
+- Use Pylint for linting: `poetry run pylint`
+- Follow Django best practices and DRY principles
+
+**Database:**
+- Environment variables:
+  - `POSTGRES_DB` (default: wagtail)
+  - `POSTGRES_USER` (default: postgres)
+  - `POSTGRES_PASSWORD` (required in production)
+  - `POSTGRES_HOST` (default: localhost)
+  - `POSTGRES_PORT` (default: 5432)
+
+**CORS Configuration:**
+- Configured via `CORS_ORIGINS` environment variable
+- Default development: `http://localhost:5173` (Vite dev server)
+- Production: Set to frontend domain
+
+### Frontend Development (React + TypeScript)
+
+**Environment Setup:**
+- Node 18+ required
+- Package manager: npm or yarn (both lockfiles present)
+
+**Running Frontend:**
+```bash
+cd frontend
+npm install              # Install dependencies
+npm run dev             # Start Vite dev server (port 5173)
+npm run build           # Production build
+npm run preview         # Preview production build
+npm run lint            # Run ESLint
+```
+
+**TypeScript Configuration:**
+- Strict mode enabled
+- Target: ES2022
+- JSX: react-jsx
+- No unused locals/parameters allowed
+
+**Styling:**
+- TailwindCSS 4.1.17 for utility-first styling
+- Global styles in `src/index.css`
+- Component styles in `src/App.css`
+
+**Code Quality:**
+- ESLint with TypeScript support configured
+- React Hooks linting enabled
+- Run `npm run lint` before committing
+
+**Build Tool:**
+- Vite 7.2.4 for fast development and optimized builds
+- HMR (Hot Module Replacement) enabled
+- Configuration in `vite.config.ts`
+
+### Docker & Deployment
+
+**Backend Container:**
+```bash
+docker build -t piorka-backend ./backend
+docker run -p 8000:8000 --env-file .env piorka-backend
+```
+- Base: python:3.13-slim-bookworm
+- Non-root user: wagtail
+- Runs migrations on startup
+- Serves with Gunicorn on port 8000
+
+**Frontend Container:**
+```bash
+docker build -t piorka-frontend ./frontend
+docker run -p 80:80 piorka-frontend
+```
+- Multi-stage build (Node builder → Nginx Alpine)
+- Nginx serves static assets on port 80
+- SPA routing configured (all routes → index.html)
+- Gzip compression and asset caching enabled
+
+### API Integration
+
+**Backend URLs:**
+- `/admin/` - Wagtail admin interface (content management)
+- `/django-admin/` - Django admin
+- `/search/` - Search endpoint
+- `/documents/` - Document management
+- `/` - Wagtail page serving (catch-all)
+
+**Frontend Integration:**
+- Currently loads data from static JSON (placeholder)
+- Should consume Wagtail API endpoints for products and pages
+- CORS configured to allow frontend requests
+
+## Coding Standards
+
+### General Principles
+- **Avoid over-engineering**: Only implement what's explicitly requested
+- **Keep it simple**: No premature abstractions or unnecessary features
+- **Security first**: Prevent XSS, SQL injection, CSRF, and other OWASP vulnerabilities
+- **No backwards compatibility hacks**: Delete unused code completely
+- **Read before modifying**: Always read files before making changes
+
+### Backend (Django/Wagtail)
+- Follow Django naming conventions (snake_case for functions/variables)
+- Use Wagtail Panels for admin interface customization
+- Leverage Wagtail snippets for reusable content (like Products)
+- Database queries should use Django ORM
+- Add migrations for all model changes: `python manage.py makemigrations`
+- Write tests in `tests.py` files using `WagtailPageTestCase`
+
+### Frontend (React/TypeScript)
+- Use functional components with hooks (no class components)
+- TypeScript strict mode - all types must be explicit
+- Component files: PascalCase (e.g., `ProductList.tsx`)
+- Use TailwindCSS utilities instead of custom CSS when possible
+- Props should have defined TypeScript interfaces
+- No `any` types unless absolutely necessary
+
+### File Organization
+- Backend: Django app structure (models, views, templates, tests in each app)
+- Frontend: Components in `src/`, shared utilities in subdirectories
+- Static assets: `public/` for public files, `src/assets/` for bundled assets
+
+## Common Tasks
+
+### Adding a New Django App
+```bash
+cd backend
+poetry run python manage.py startapp <app_name>
+```
+Then add to `INSTALLED_APPS` in `core/settings/base.py`
+
+### Creating Migrations
+```bash
+cd backend
+poetry run python manage.py makemigrations
+poetry run python manage.py migrate
+```
+
+### Adding Python Dependencies
+```bash
+cd backend
+poetry add <package_name>              # Production
+poetry add --group dev <package_name>  # Development only
+```
+
+### Adding Frontend Dependencies
+```bash
+cd frontend
+npm install <package_name>             # Production
+npm install --save-dev <package_name>  # Development only
+```
+
+### Creating Wagtail Pages/Snippets
+- Define models in appropriate app's `models.py`
+- Register snippets with `@register_snippet` decorator
+- Add to Wagtail admin via `panels` configuration
+- Run migrations after model changes
+
+### Stripe Integration
+- Product model includes `stripe_product_id` and `stripe_price_id`
+- Update these fields in Wagtail admin when creating products
+- Implement payment flow in frontend consuming these IDs
+
+## Environment Variables
+
+**Required for Backend:**
+```
+POSTGRES_DB=wagtail
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=<secure_password>
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+CORS_ORIGINS=http://localhost:5173
+ALLOWED_HOSTS=localhost,127.0.0.1
+DJANGO_SETTINGS_MODULE=core.settings.dev
+```
+
+**Production Additional:**
+```
+SECRET_KEY=<secure_random_key>
+DEBUG=False
+```
+
+## Testing Strategy
+
+### Backend Testing
+- Use Django's test framework with `WagtailPageTestCase`
+- Test model creation, page rendering, template usage
+- Run tests before committing: `poetry run python manage.py test`
+- Aim for coverage of critical paths (models, views, business logic)
+
+### Frontend Testing
+- No testing framework currently configured
+- Consider adding Vitest for unit tests
+- ESLint provides static analysis
+
+## Git Workflow
+- Main branch: `main`
+- Create feature branches for new work
+- Commit messages should be descriptive and concise
+- Modified files currently: `backend/home/models.py`, `frontend/src/App.tsx`
+
+## Performance Considerations
+- **Backend**: Use Django query optimization (select_related, prefetch_related)
+- **Frontend**: Lazy load components, optimize bundle size
+- **Static files**: Nginx caching configured for 1 year on `/assets/`
+- **Database**: Index frequently queried fields
+- **Images**: Use Wagtail's image renditions for responsive images
+
+## Security Checklist
+- ✓ CORS properly configured
+- ✓ CSRF protection enabled (Django middleware)
+- ✓ XFrame protection enabled
+- ✓ Database credentials via environment variables
+- ✓ Debug disabled in production settings
+- ⚠ SECRET_KEY must be set securely in production
+- ⚠ HTTPS should be enforced in production
+- ⚠ Input validation on all user-submitted data
+- ⚠ Stripe keys should be stored securely (environment variables)
+
+## Key Files Reference
+
+### Backend
+- [core/settings/base.py](backend/core/settings/base.py) - Main Django configuration
+- [home/models.py](backend/home/models.py) - Product and HomePage models
+- [core/urls.py](backend/core/urls.py) - URL routing
+- [manage.py](backend/manage.py) - Django CLI entry point
+
+### Frontend
+- [src/App.tsx](frontend/src/App.tsx) - Main React component
+- [src/main.tsx](frontend/src/main.tsx) - React DOM entry point
+- [vite.config.ts](frontend/vite.config.ts) - Build configuration
+- [tsconfig.app.json](frontend/tsconfig.app.json) - TypeScript config
+
+### Configuration
+- [backend/pyproject.toml](backend/pyproject.toml) - Python dependencies
+- [frontend/package.json](frontend/package.json) - Node dependencies
+- [backend/Dockerfile](backend/Dockerfile) - Backend container
+- [frontend/Dockerfile](frontend/Dockerfile) - Frontend container
+- [frontend/nginx.conf](frontend/nginx.conf) - Nginx configuration
+
+## Additional Notes
+- Project documentation is in Polish (README.md)
+- Wagtail admin provides GUI for managing products and pages
+- Frontend currently uses placeholder JSON data - needs full API integration
+- Stripe integration fields present but payment flow needs implementation
+- No comprehensive test coverage in frontend yet
