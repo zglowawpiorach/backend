@@ -1,4 +1,6 @@
 from django.db import models
+from django.forms import CheckboxSelectMultiple
+from django.utils.text import slugify
 from wagtail.admin.panels import FieldPanel, MultiFieldPanel
 from wagtail.models import Page
 
@@ -85,14 +87,24 @@ class Product(models.Model):
     ]
 
     # Basic fields
-    name = models.CharField(max_length=255)
-    slug = models.SlugField(unique=True)
-    description = models.TextField(blank=True)
-    price = models.DecimalField(max_digits=10, decimal_places=2)
-    stripe_price_id = models.CharField(max_length=255, blank=True, help_text="Stripe Price ID for checkout")
-    stripe_product_id = models.CharField(max_length=255, blank=True, help_text="Stripe Product ID")
-    active = models.BooleanField(default=True)
+    name = models.CharField(max_length=255, verbose_name="Nazwa (ang.)")
+    tytul = models.CharField(max_length=255, blank=True, verbose_name="Nazwa (pl.)")
+
+    slug = models.SlugField(unique=True, blank=True, help_text="Automatycznie generowane z nazwy")
+    
+    description = models.TextField(blank=True, verbose_name="Opis (ang.)")
+    opis = models.TextField(blank=True, verbose_name="Opis (pl.)")
+
+    price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Cena podstawowa")
+    cena = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="Cena promocyjna")
+    
+    stripe_price_id = models.CharField(max_length=255, blank=True, help_text="Automatycznie generowane przez Stripe")
+    stripe_product_id = models.CharField(max_length=255, blank=True, help_text="Automatycznie generowane przez Stripe")
+    
+    active = models.BooleanField(default=True, verbose_name="Czy dostepny w sklepie")
+
     featured = models.BooleanField(default=False, verbose_name="Wyróżnij na stronie głównej")
+    
     image = models.ForeignKey(
         'wagtailimages.Image',
         null=True, blank=True,
@@ -103,14 +115,11 @@ class Product(models.Model):
     # New fields
     nr_w_katalogu_zdjec = models.CharField(max_length=255, blank=True, verbose_name="Nr w katalogu zdjęć")
     przeznaczenie_ogolne = models.CharField(max_length=50, choices=PRZEZNACZENIE_CHOICES, blank=True, verbose_name="Przeznaczenie ogólne")
-    tytul = models.CharField(max_length=255, blank=True, verbose_name="Tytuł")
-    opis = models.TextField(blank=True, verbose_name="Opis")
-    dla_kogo = models.CharField(max_length=20, choices=DLA_KOGO_CHOICES, blank=True, verbose_name="Dla kogo")
-    cena = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="Cena")
+    dla_kogo = models.JSONField(default=list, blank=True, verbose_name="Dla kogo")
     dlugosc_kategoria = models.CharField(max_length=20, choices=DLUGOSC_KATEGORIA_CHOICES, blank=True, verbose_name="Długość kategoria")
     dlugosc_w_cm = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name="Długość w cm")
-    kolor_pior = models.CharField(max_length=30, choices=KOLOR_PIOR_CHOICES, blank=True, verbose_name="Kolor piór w przewadze")
-    gatunek_ptakow = models.CharField(max_length=30, choices=GATUNEK_PTAKOW_CHOICES, blank=True, verbose_name="Pióra zgubiły (gatunek)")
+    kolor_pior = models.JSONField(default=list, blank=True, verbose_name="Kolor piór w przewadze")
+    gatunek_ptakow = models.JSONField(default=list, blank=True, verbose_name="Pióra zgubiły (gatunek)")
     kolor_elementow_metalowych = models.CharField(max_length=20, choices=KOLOR_METALOWYCH_CHOICES, blank=True, verbose_name="Kolor elementów metalowych")
     rodzaj_zapiecia = models.CharField(max_length=30, choices=RODZAJ_ZAPIECIA_CHOICES, blank=True, verbose_name="Rodzaj zapięcia")
     pytanie_o_przedmiot = models.CharField(max_length=50, choices=PYTANIE_O_PRZEDMIOT_CHOICES, blank=True, verbose_name="Pytanie o przedmiot")
@@ -120,14 +129,14 @@ class Product(models.Model):
 
     panels = [
         MultiFieldPanel([
-            FieldPanel('name'),
             FieldPanel('slug'),
             FieldPanel('active'),
             FieldPanel('featured'),
         ], heading="Basic Info"),
         MultiFieldPanel([
-            FieldPanel('nr_w_katalogu_zdjec'),
             FieldPanel('tytul'),
+            FieldPanel('name'),
+            FieldPanel('nr_w_katalogu_zdjec'),
             FieldPanel('opis'),
             FieldPanel('description'),
         ], heading="Opisy"),
@@ -138,15 +147,15 @@ class Product(models.Model):
         FieldPanel('image'),
         MultiFieldPanel([
             FieldPanel('przeznaczenie_ogolne'),
-            FieldPanel('dla_kogo'),
+            FieldPanel('dla_kogo', widget=CheckboxSelectMultiple(choices=DLA_KOGO_CHOICES)),
         ], heading="Przeznaczenie"),
         MultiFieldPanel([
             FieldPanel('dlugosc_kategoria'),
             FieldPanel('dlugosc_w_cm'),
         ], heading="Wymiary"),
         MultiFieldPanel([
-            FieldPanel('kolor_pior'),
-            FieldPanel('gatunek_ptakow'),
+            FieldPanel('kolor_pior', widget=CheckboxSelectMultiple(choices=KOLOR_PIOR_CHOICES)),
+            FieldPanel('gatunek_ptakow', widget=CheckboxSelectMultiple(choices=GATUNEK_PTAKOW_CHOICES)),
         ], heading="Pióra"),
         MultiFieldPanel([
             FieldPanel('kolor_elementow_metalowych'),
@@ -158,6 +167,17 @@ class Product(models.Model):
             FieldPanel('stripe_price_id'),
         ], heading="Stripe Integration"),
     ]
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.name)
+            slug = base_slug
+            counter = 1
+            while Product.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
