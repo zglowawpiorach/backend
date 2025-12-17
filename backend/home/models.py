@@ -61,18 +61,19 @@ class ProductAdminForm(ClusterForm):
                 self.fields['rodzaj_zapiecia'].initial = self.instance.rodzaj_zapiecia
 
     def save(self, commit=True):
-        # Convert MultipleChoiceField data to lists for JSONFields before saving
-        instance = super().save(commit=False)
+        # Let parent ClusterForm handle the save, but intercept to update JSON fields
+        # Pass commit=True to parent so formsets are handled properly
+        instance = super().save(commit=commit)
 
+        # Update JSONField values after save
         instance.dla_kogo = self.cleaned_data.get('dla_kogo', [])
         instance.kolor_pior = self.cleaned_data.get('kolor_pior', [])
         instance.gatunek_ptakow = self.cleaned_data.get('gatunek_ptakow', [])
         instance.rodzaj_zapiecia = self.cleaned_data.get('rodzaj_zapiecia', [])
 
+        # Save again to update the JSON fields
         if commit:
-            instance.save()
-            # Save formsets (for related objects like ProductImage)
-            self.save_m2m()
+            instance.save(update_fields=['dla_kogo', 'kolor_pior', 'gatunek_ptakow', 'rodzaj_zapiecia'])
 
         return instance
 
