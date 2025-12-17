@@ -67,7 +67,10 @@ class ProductAdminForm(ClusterForm):
             # Remove forms that don't have an image
             valid_forms = []
             for form in formset.forms:
-                # Skip forms that are marked for deletion or don't have data
+                # Check if form has cleaned_data (valid form)
+                if not hasattr(form, 'cleaned_data') or not form.cleaned_data:
+                    continue
+                # Skip forms that are marked for deletion
                 if form.cleaned_data.get('DELETE'):
                     continue
                 # Only keep forms that have an image selected
@@ -104,6 +107,9 @@ class ProductImage(Orderable):
     panels = [
         FieldPanel('image'),
     ]
+
+    def __str__(self):
+        return f"{self.product.name} - Image {self.sort_order}"
 
     class Meta:
         verbose_name = "Zdjęcie produktu"
@@ -198,9 +204,9 @@ class Product(ClusterableModel):
     stripe_price_id = models.CharField(max_length=255, blank=True, help_text="Automatycznie generowane przez Stripe")
     stripe_product_id = models.CharField(max_length=255, blank=True, help_text="Automatycznie generowane przez Stripe")
     
-    active = models.BooleanField(default=True, verbose_name="Czy dostepny w sklepie")
+    active = models.BooleanField(default=True, db_index=True, verbose_name="Czy dostepny w sklepie")
 
-    featured = models.BooleanField(default=False, verbose_name="Wyróżnij na stronie głównej")
+    featured = models.BooleanField(default=False, db_index=True, verbose_name="Wyróżnij na stronie głównej")
 
     # New fields
     nr_w_katalogu_zdjec = models.CharField(max_length=255, blank=True, default='', verbose_name="Nr w katalogu zdjęć")
@@ -322,8 +328,16 @@ class Product(ClusterableModel):
             base_slug = slugify(self.name)
             slug = base_slug
             counter = 1
-            while Product.objects.filter(slug=slug).exists():
+            # Exclude current instance if updating
+            queryset = Product.objects.filter(slug=slug)
+            if self.pk:
+                queryset = queryset.exclude(pk=self.pk)
+
+            while queryset.exists():
                 slug = f"{base_slug}-{counter}"
+                queryset = Product.objects.filter(slug=slug)
+                if self.pk:
+                    queryset = queryset.exclude(pk=self.pk)
                 counter += 1
             self.slug = slug
 
@@ -350,6 +364,13 @@ class Product(ClusterableModel):
 
     class Meta:
         ordering = ['-created_at']
+        verbose_name = "Produkt"
+        verbose_name_plural = "Produkty"
+        indexes = [
+            models.Index(fields=['-created_at']),
+            models.Index(fields=['active', '-created_at']),
+            models.Index(fields=['featured', '-created_at']),
+        ]
 
 class HomePage(Page):
     pass
