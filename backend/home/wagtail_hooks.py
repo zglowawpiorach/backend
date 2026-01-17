@@ -11,9 +11,9 @@ class ProductViewSet(SnippetViewSet):
     menu_label = "Products"
     menu_order = 200
     add_to_admin_menu = True
-    list_display = ["name", "price", "active", "created_at"]
+    list_display = ["nr_w_katalogu_zdjec", "tytul",  "cena", "active", "featured", "created_at"]
     list_filter = ["active", "created_at"]
-    search_fields = ["name", "description"]
+    search_fields = ["tytul", "description", "nr_w_katalogu_zdjec"]
 
 
 class EventViewSet(SnippetViewSet):
