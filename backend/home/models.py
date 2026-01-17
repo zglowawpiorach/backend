@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from django import forms
 from django.utils.text import slugify
 from wagtail.admin.panels import FieldPanel, MultiFieldPanel, InlinePanel
+from wagtail.fields import RichTextField
 from wagtail.models import Page, Orderable
 from modelcluster.fields import ParentalKey
 from modelcluster.models import ClusterableModel
@@ -182,8 +183,8 @@ class Product(ClusterableModel):
 
     slug = models.SlugField(unique=True, blank=True, help_text="Automatycznie generowane z nazwy")
     
-    description = models.TextField(blank=True, verbose_name="Opis (ang.)")
-    opis = models.TextField(blank=True, verbose_name="Opis (pl.)")
+    description = RichTextField(blank=True, verbose_name="Opis (ang.)")
+    opis = RichTextField(blank=True, verbose_name="Opis (pl.)")
 
     price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Cena podstawowa")
     cena = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="Cena promocyjna")
