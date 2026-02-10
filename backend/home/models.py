@@ -235,8 +235,8 @@ class Product(ClusterableModel):
             FieldPanel('dla_kogo'),
         ], heading="Przeznaczenie"),
         MultiFieldPanel([
-            FieldPanel('dlugosc_kategoria'),
             FieldPanel('dlugosc_w_cm'),
+            FieldPanel('dlugosc_kategoria'),
         ], heading="Wymiary"),
         MultiFieldPanel([
             FieldPanel('kolor_pior'),
