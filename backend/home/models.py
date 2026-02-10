@@ -125,10 +125,10 @@ class Product(ClusterableModel):
     ]
 
     DLUGOSC_KATEGORIA_CHOICES = [
-        ('krotkie', 'Krótkie'),
-        ('srednie', 'Średnie'),
-        ('dlugie', 'Długie'),
-        ('bardzo_dlugie', 'Bardzo długie'),
+        ('krotkie', 'Krótkie (do 10cm)'),
+        ('srednie', 'Średnie (10-15cm)'),
+        ('dlugie', 'Długie (15-20cm)'),
+        ('bardzo_dlugie', 'Bardzo długie (20cm+)'),
     ]
 
     KOLOR_PIOR_CHOICES = [
