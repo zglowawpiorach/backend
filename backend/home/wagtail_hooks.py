@@ -2,7 +2,7 @@ from wagtail.snippets.models import register_snippet
 from wagtail.snippets.views.snippets import SnippetViewSet
 from wagtail import hooks
 
-from .models import Product, Event
+from .models import Product, Event, Reservation
 
 
 class ProductViewSet(SnippetViewSet):
@@ -27,8 +27,20 @@ class EventViewSet(SnippetViewSet):
     search_fields = ["title", "location", "description"]
 
 
+class ReservationViewSet(SnippetViewSet):
+    model = Reservation
+    icon = "lock"
+    menu_label = "Reservations"
+    menu_order = 202
+    add_to_admin_menu = True
+    list_display = ["stripe_session_id", "status", "reserved_at", "expires_at", "customer_email"]
+    list_filter = ["status", "reserved_at", "expires_at"]
+    search_fields = ["stripe_session_id", "customer_email"]
+
+
 register_snippet(ProductViewSet)
 register_snippet(EventViewSet)
+register_snippet(ReservationViewSet)
 
 
 @hooks.register('construct_main_menu')

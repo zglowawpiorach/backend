@@ -481,3 +481,40 @@ class StripeSync:
             product_ids = ','.join(str(p.pk) for p in products)
             logger.error(f"Checkout session error for basket [{product_ids}]: {error_msg}")
             return {'success': False, 'error': error_msg}
+
+    @staticmethod
+    def cancel_checkout_session(session_id: str) -> dict:
+        """
+        Cancel a Stripe Checkout Session.
+
+        Args:
+            session_id: The Stripe checkout session ID to cancel
+
+        Returns:
+            Dict with 'success' (bool) and optional 'error' message
+        """
+        try:
+            api_key = StripeSync._get_stripe_api_key()
+            stripe.api_key = api_key
+
+            session = stripe.checkout.Session.expire(session_id)
+
+            logger.info(f"Cancelled checkout session {session_id}")
+            return {
+                'success': True,
+                'session_id': session.id,
+            }
+
+        except stripe.error.InvalidRequestError as e:
+            # Session might already be expired or completed
+            error_msg = f"Invalid session: {str(e)}"
+            logger.warning(f"Failed to cancel session {session_id}: {error_msg}")
+            return {'success': False, 'error': error_msg}
+        except stripe.error.StripeError as e:
+            error_msg = f"Stripe API error: {str(e)}"
+            logger.error(f"Error cancelling session {session_id}: {error_msg}")
+            return {'success': False, 'error': error_msg}
+        except Exception as e:
+            error_msg = f"Unexpected error: {str(e)}"
+            logger.error(f"Error cancelling session {session_id}: {error_msg}")
+            return {'success': False, 'error': error_msg}

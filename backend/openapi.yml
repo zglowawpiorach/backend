@@ -1,0 +1,934 @@
+openapi: 3.0.3
+info:
+  title: Piorka E-Commerce API
+  description: |
+    API for the Piorka handmade jewelry e-commerce platform.
+
+    ## Authentication
+    No authentication required for public endpoints.
+
+    ## Base URL
+    Production: `https://api.zglowawpiorach.pl`
+  version: 1.0.0
+  contact:
+    name: Piorka API Support
+
+servers:
+  - url: https://api.zglowawpiorach.pl
+    description: Production server
+  - url: http://localhost:8000
+    description: Local development server
+
+tags:
+  - name: Products
+    description: Product catalog operations
+  - name: Checkout
+    description: Stripe checkout session creation and reservation management
+  - name: Events
+    description: Artist events and exhibitions
+  - name: Images
+    description: Image gallery operations
+
+paths:
+  /api/products/:
+    get:
+      tags: [Products]
+      summary: Get all active products
+      description: |
+        Returns a list of all active products with full details including images.
+        Products are returned with absolute image URLs.
+      operationId: getProducts
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    example: 42
+                  products:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Product'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/products/:
+    get:
+      tags: [Products]
+      summary: Get products with filtering
+      description: |
+        Returns products with optional status filtering.
+        Products are looked up by slug (not ID).
+
+        **Query Parameters:**
+        - `status` (optional): `active` (default), `sold`, or `all`
+      operationId: getProductsv1
+      parameters:
+        - name: status
+          in: query
+          description: Filter by product status
+          schema:
+            type: string
+            enum: [active, sold, all]
+            default: active
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  next:
+                    type: string
+                    nullable: true
+                  previous:
+                    type: string
+                    nullable: true
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProductV1'
+
+  /api/v1/products/{slug}/:
+    get:
+      tags: [Products]
+      summary: Get a single product by slug
+      description: Retrieves detailed information for a specific product.
+      operationId: getProductBySlug
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: Product slug (URL-friendly identifier)
+          schema:
+            type: string
+          example: dizajnerskie-kolczyki-deep-purple-navy
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductV1'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/product-filters/:
+    get:
+      tags: [Products]
+      summary: Get product filter values
+      description: |
+        Returns all possible values for product filter fields.
+        Used to build filter UI in the frontend.
+        Response is cached for 24 hours.
+      operationId: getProductFilters
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  przeznaczenie_ogolne:
+                    type: array
+                    items:
+                      type: string
+                    example: ["kolczyki_para", "na_szyje"]
+                  dla_kogo:
+                    type: array
+                    items:
+                      type: string
+                    example: ["dla_niej", "unisex"]
+                  dlugosc_kategoria:
+                    type: array
+                    items:
+                      type: string
+                    example: ["krotkie", "srednie", "dlugie"]
+                  kolor_pior:
+                    type: array
+                    items:
+                      type: string
+                    example: ["bialy", "czarny", "bezowy"]
+                  gatunek_ptakow:
+                    type: array
+                    items:
+                      type: string
+                    example: ["kogut", "paw", "golab"]
+                  kolor_elementow_metalowych:
+                    type: array
+                    items:
+                      type: string
+                    example: ["zloty", "srebrny"]
+                  rodzaj_zapiecia:
+                    type: array
+                    items:
+                      type: string
+                    example: ["bigle", "sztyfty"]
+
+  /api/checkout/create/:
+    post:
+      tags: [Checkout]
+      summary: Create Stripe checkout session (basket)
+      description: |
+        Creates a Stripe Checkout Session for one or more products.
+        Supports single product or basket with multiple unique products.
+
+        **Important:** All products must be active and have valid Stripe price IDs.
+        Shipping cost (20 PLN) is added once per session, not per product.
+      operationId: createCheckout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product_ids, success_url, cancel_url]
+              properties:
+                product_ids:
+                  type: array
+                  items:
+                    type: integer
+                  description: List of product IDs to purchase
+                  example: [1, 5, 9]
+                success_url:
+                  type: string
+                  format: uri
+                  description: URL to redirect after successful payment
+                  example: https://zglowawpiorach.pl/success
+                cancel_url:
+                  type: string
+                  format: uri
+                  description: URL to redirect if payment is cancelled
+                  example: https://zglowawpiorach.pl/shop
+                email:
+                  type: string
+                  format: email
+                  description: Optional customer email for pre-filling
+                  example: customer@example.com
+      responses:
+        '200':
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  checkout_url:
+                    type: string
+                    format: uri
+                    example: https://checkout.stripe.com/c/pay/cs_test_...
+                  session_id:
+                    type: string
+                    example: cs_test_abc123xyz
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                no_products:
+                  value:
+                    success: false
+                    error: No products provided
+                missing_urls:
+                  value:
+                    success: false
+                    error: success_url and cancel_url are required
+                products_not_available:
+                  value:
+                    success: false
+                    error: 'Products not found or not active: {5, 10}'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/checkout/:
+    post:
+      tags: [Checkout]
+      summary: Create Stripe checkout session (single product)
+      description: |
+        Creates a Stripe Checkout Session for a single product.
+        For basket checkout, use /api/checkout/create/ instead.
+      operationId: createCheckoutV1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product_id, success_url, cancel_url]
+              properties:
+                product_id:
+                  type: integer
+                  description: Single product ID
+                  example: 123
+                success_url:
+                  type: string
+                  format: uri
+                  example: https://zglowawpiorach.pl/success
+                cancel_url:
+                  type: string
+                  format: uri
+                  example: https://zglowawpiorach.pl/shop
+                customer_email:
+                  type: string
+                  format: email
+                  example: customer@example.com
+      responses:
+        '200':
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  checkout_url:
+                    type: string
+                    format: uri
+                  session_id:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  details:
+                    type: object
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/check-availability/:
+    post:
+      tags: [Checkout]
+      summary: Check product availability
+      description: |
+        Check if products are available for purchase (not reserved, sold, or inactive).
+        Use this to validate basket before redirecting to checkout.
+      operationId: checkAvailability
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product_ids]
+              properties:
+                product_ids:
+                  type: array
+                  items:
+                    type: integer
+                  description: List of product IDs to check
+                  example: [1, 5, 9]
+      responses:
+        '200':
+          description: Availability check result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: array
+                    items:
+                      type: integer
+                    description: IDs of available products
+                  unavailable:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        reason:
+                          type: string
+                          enum: [reserved, sold, inactive, not_found]
+                        message:
+                          type: string
+              example:
+                available: [1, 9]
+                unavailable:
+                  - id: 5
+                    reason: reserved
+                    message: "Produkt jest zarezerwowany przez innego klienta"
+
+  /api/v1/reserve-basket/:
+    post:
+      tags: [Checkout]
+      summary: Reserve basket and create checkout session
+      description: |
+        **This is the main endpoint for creating a checkout.**
+
+        This endpoint atomically:
+        1. Creates a Stripe Checkout Session
+        2. Reserves all products in the basket for 30 minutes
+
+        **Reservation flow:**
+        - Products are marked as "reserved" and unavailable to other customers
+        - Reservation expires after 30 minutes
+        - If payment is completed, products are marked as "sold"
+        - If payment fails or expires, products are released back to "active"
+
+        **Webhook events handled:**
+        - `checkout.session.completed` → marks products as sold
+        - `checkout.session.expired` → releases products back to active
+
+        **Redirect URLs:**
+        - `success_url`: Include `{CHECKOUT_SESSION_ID}` placeholder to receive session ID
+        - `cancel_url`: User will be redirected here if they cancel payment
+
+        **Frontend integration example:**
+        ```javascript
+        const response = await fetch('/api/v1/reserve-basket/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            product_ids: basketItems.map(item => item.id),
+            success_url: `${window.location.origin}/success?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${window.location.origin}/shop`
+          })
+        });
+        const { success, checkout_url, session_id, expires_at } = await response.json();
+        if (success) {
+          // Redirect to Stripe checkout
+          window.location.href = checkout_url;
+        }
+        ```
+      operationId: reserveBasket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product_ids, success_url, cancel_url]
+              properties:
+                product_ids:
+                  type: array
+                  items:
+                    type: integer
+                  description: List of product IDs to purchase
+                  example: [1, 5, 9]
+                success_url:
+                  type: string
+                  format: uri
+                  description: |
+                    URL to redirect after successful payment.
+                    Include `{CHECKOUT_SESSION_ID}` placeholder to receive the session ID.
+                  example: https://zglowawpiorach.pl/success?session_id={CHECKOUT_SESSION_ID}
+                cancel_url:
+                  type: string
+                  format: uri
+                  description: URL to redirect if payment is cancelled
+                  example: https://zglowawpiorach.pl/shop
+                customer_email:
+                  type: string
+                  format: email
+                  description: Optional customer email for pre-filling Stripe checkout
+                  example: customer@example.com
+      responses:
+        '200':
+          description: Basket reserved and checkout created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  checkout_url:
+                    type: string
+                    format: uri
+                    description: Stripe checkout URL - redirect user here
+                    example: https://checkout.stripe.com/c/pay/cs_test_...
+                  session_id:
+                    type: string
+                    description: Stripe checkout session ID
+                    example: cs_test_abc123xyz
+                  expires_at:
+                    type: string
+                    format: date-time
+                    description: When the reservation expires (ISO 8601 format)
+                    example: "2026-02-21T12:30:00+00:00"
+        '200 (partial failure)':
+          description: Some products are unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  unavailable_products:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        reason:
+                          type: string
+                        message:
+                          type: string
+              example:
+                success: false
+                unavailable_products:
+                  - id: 5
+                    reason: reserved
+                    message: "Produkt jest zarezerwowany przez innego klienta"
+        '500':
+          description: Stripe API error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  error:
+                    type: string
+                    example: Failed to create checkout session
+
+  /api/v1/cancel-checkout/:
+    post:
+      tags: [Checkout]
+      summary: Cancel checkout session and release products
+      description: |
+        Cancels an active checkout session and releases reserved products back to inventory.
+        Use this when user explicitly cancels their basket/order.
+      operationId: cancelCheckout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id]
+              properties:
+                session_id:
+                  type: string
+                  description: Stripe checkout session ID to cancel
+                  example: cs_test_abc123xyz
+      responses:
+        '200':
+          description: Checkout cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Checkout session cancelled and products released"
+        '404':
+          description: Reservation not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Reservation not found"
+
+  /api/v1/cleanup-expired-reservations/:
+    post:
+      tags: [Checkout]
+      summary: Clean up expired reservations
+      description: |
+        Cancels all reservations that have passed their expiration time.
+        This endpoint is intended to be called periodically by a cron job
+        (every 5 minutes recommended) to clean up reservations that weren't
+        properly handled by Stripe webhooks.
+
+        **Note:** This is also available as a management command:
+        ```bash
+        python manage.py cleanup_expired_reservations
+        ```
+      operationId: cleanupExpiredReservations
+      responses:
+        '200':
+          description: Cleanup completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  cancelled:
+                    type: integer
+                    description: Number of reservations cancelled
+                    example: 3
+                  message:
+                    type: string
+                    example: "Cancelled 3/3 expired reservation(s)"
+                  details:
+                    type: object
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/events/:
+    get:
+      tags: [Events]
+      summary: Get all active events
+      description: Returns a list of active artist events and exhibitions.
+      operationId: getEvents
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+
+  /api/images/:
+    get:
+      tags: [Images]
+      summary: Get images by tags
+      description: |
+        Returns images filtered by tags.
+        Use comma-separated tags to filter. Returns images matching ANY of the provided tags.
+      operationId: getImages
+      parameters:
+        - name: tag
+          in: query
+          description: Comma-separated tag names
+          schema:
+            type: string
+          example: kolczyki, piora
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  images:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Image'
+
+components:
+  schemas:
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+          example: 123
+        slug:
+          type: string
+          readOnly: true
+          example: dizajnerskie-kolczyki-deep-purple-navy
+        name:
+          type: string
+          example: "Deep Purple & Navy Earrings"
+        tytul:
+          type: string
+          example: "Dizajnerskie kolczyki – Deep Purple & Navy"
+        description:
+          type: string
+          nullable: true
+          example: "Handmade earrings featuring natural feathers..."
+        opis:
+          type: string
+          nullable: true
+          example: "Dizajnerskie kolczyki z naturalnych piór..."
+        price:
+          type: number
+          format: float
+          example: 150.00
+        cena:
+          type: number
+          format: float
+          nullable: true
+          example: 120.00
+        featured:
+          type: boolean
+          example: true
+        nr_w_katalogu_zdjec:
+          type: string
+          nullable: true
+          example: "A-123"
+        przeznaczenie_ogolne:
+          type: string
+          nullable: true
+          enum: [kolczyki_para, kolczyki_asymetria, kolczyki_single, kolczyki_komplet, zausznice, na_szyje, na_reke, do_wlosow, inne]
+        dla_kogo:
+          type: array
+          items:
+            type: string
+          example: ["dla_niej"]
+        dlugosc_kategoria:
+          type: string
+          nullable: true
+          enum: [krotkie, srednie, dlugie, bardzo_dlugie]
+        dlugosc_w_cm:
+          type: number
+          format: float
+          nullable: true
+          example: 12.5
+        kolor_pior:
+          type: array
+          items:
+            type: string
+          example: ["fioletowy", "granatowy"]
+        gatunek_ptakow:
+          type: array
+          items:
+            type: string
+          example: ["kogut"]
+        kolor_elementow_metalowych:
+          type: string
+          nullable: true
+          example: "zloty"
+        rodzaj_zapiecia:
+          type: array
+          items:
+            type: string
+          example: ["bigle"]
+        images:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+                format: uri
+              width:
+                type: integer
+              height:
+                type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ProductV1:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 123
+        name:
+          type: string
+          example: "Deep Purple & Navy Earrings"
+        tytul:
+          type: string
+          example: "Dizajnerskie kolczyki – Deep Purple & Navy"
+        slug:
+          type: string
+          example: dizajnerskie-kolczyki-deep-purple-navy
+        description:
+          type: string
+          nullable: true
+        opis:
+          type: string
+          nullable: true
+        price:
+          type: number
+          format: float
+          example: 150.00
+        cena:
+          type: number
+          format: float
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive, sold]
+          example: active
+        sold_at:
+          type: string
+          format: date-time
+          nullable: true
+        image_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Primary image (800x800 rendition)
+        is_buyable:
+          type: boolean
+          description: true if status is 'active' and not sold
+          example: true
+        featured:
+          type: boolean
+        nr_w_katalogu_zdjec:
+          type: string
+          nullable: true
+        przeznaczenie_ogolne:
+          type: string
+          nullable: true
+        dla_kogo:
+          type: array
+          items:
+            type: string
+        dlugosc_kategoria:
+          type: string
+          nullable: true
+        dlugosc_w_cm:
+          type: number
+          format: float
+          nullable: true
+        kolor_pior:
+          type: array
+          items:
+            type: string
+        gatunek_ptakow:
+          type: array
+          items:
+            type: string
+        kolor_elementow_metalowych:
+          type: string
+          nullable: true
+        rodzaj_zapiecia:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Event:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: "Artisan Fair Warsaw"
+        description:
+          type: string
+          nullable: true
+          example: "Come see our latest collection..."
+        location:
+          type: string
+          nullable: true
+          example: "Warsaw Exhibition Center, Hall 3"
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        external_url:
+          type: string
+          format: uri
+          nullable: true
+        images:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+                format: uri
+              width:
+                type: integer
+              height:
+                type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Image:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 42
+        title:
+          type: string
+          example: "Earrings product shot"
+        url:
+          type: string
+          format: uri
+          example: https://api.zglowawpiorach.pl/media/original_images/image.jpg
+        width:
+          type: integer
+          example: 1200
+        height:
+          type: integer
+          example: 800
+        tags:
+          type: array
+          items:
+            type: string
+          example: ["kolczyki", "piora", "fioletowy"]
+
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Product not found
+              detail:
+                type: string
+                example: The requested resource does not exist
+
+    ServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: Internal server error

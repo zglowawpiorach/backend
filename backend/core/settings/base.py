@@ -257,6 +257,26 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        'django.utils.autoreload': {
+            'handlers': [],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'django.template': {
+            'handlers': [],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'django.db.backends': {
+            'handlers': [],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'django.utils': {
+            'handlers': [],
+            'level': 'WARNING',
+            'propagate': False,
+        },
         'api': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',

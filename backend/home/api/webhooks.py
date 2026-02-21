@@ -16,6 +16,7 @@ import stripe
 
 from home.models import Product
 from home.stripe_sync import StripeSync
+from home.reservation import ReservationService
 
 logger = logging.getLogger(__name__)
 
@@ -61,41 +62,88 @@ def stripe_webhook(request):
         # Handle checkout.session.completed event
         if event.type == 'checkout.session.completed':
             session = event.data.object
-            product_id_str = session.metadata.get('product_id')
+            metadata = session.metadata
 
-            if not product_id_str:
-                logger.error(f"Checkout session {session.id} has no product_id in metadata")
-                return JsonResponse({'error': 'No product_id in metadata'}, status=400)
+            # Check if this is a basket checkout (multiple products)
+            product_ids_str = metadata.get('product_ids')
+            product_id_str = metadata.get('product_id')
 
             try:
-                product_id = int(product_id_str)
-                product = Product.objects.get(pk=product_id)
+                product_ids = []
 
-                # Set skip flag to prevent signal loop
-                product._skip_stripe_sync = True
+                # First, try to complete the reservation if it exists
+                reservation_result = ReservationService.complete_reservation(session.id)
 
-                # Mark product as sold
-                result = StripeSync.mark_as_sold(product)
+                if reservation_result['success']:
+                    # Reservation found and completed - get product IDs from it
+                    product_ids = reservation_result.get('product_ids', [])
+                    logger.info(f"Completed reservation for session {session.id}")
+                elif 'not found' not in reservation_result.get('error', ''):
+                    # Log unexpected errors but don't fail the webhook
+                    logger.warning(
+                        f"Reservation completion failed for session {session.id}: "
+                        f"{reservation_result.get('error')}"
+                    )
 
-                if result['success']:
-                    logger.info(f"Product {product_id} marked as sold via webhook")
-                else:
-                    logger.error(f"Failed to mark product {product_id} as sold: {result.get('error')}")
+                # If no reservation, fall back to metadata (for single product checkout)
+                if not product_ids and product_id_str:
+                    product_ids = [int(product_id_str)]
+                elif not product_ids and product_ids_str:
+                    product_ids = [int(pid) for pid in product_ids_str.split(',')]
 
-            except Product.DoesNotExist:
-                logger.error(f"Product {product_id} not found in webhook handler")
-                return JsonResponse({'error': 'Product not found'}, status=404)
+                if not product_ids:
+                    logger.error(f"Checkout session {session.id} has no product IDs")
+                    return JsonResponse(
+                        {'error': 'No product IDs in metadata or reservation'},
+                        status=400
+                    )
+
+                # Mark all products as sold
+                for product_id in product_ids:
+                    try:
+                        product = Product.objects.get(pk=product_id)
+
+                        # Set skip flag to prevent signal loop
+                        product._skip_stripe_sync = True
+
+                        # Mark product as sold
+                        result = StripeSync.mark_as_sold(product)
+
+                        if result['success']:
+                            logger.info(f"Product {product_id} marked as sold via webhook")
+                        else:
+                            logger.error(
+                                f"Failed to mark product {product_id} as sold: "
+                                f"{result.get('error')}"
+                            )
+
+                    except Product.DoesNotExist:
+                        logger.error(f"Product {product_id} not found in webhook handler")
+                    except Exception as e:
+                        logger.exception(
+                            f"Error marking product {product_id} as sold: {str(e)}"
+                        )
+
             except ValueError:
-                logger.error(f"Invalid product_id in metadata: {product_id_str}")
+                logger.error(f"Invalid product_id in metadata")
                 return JsonResponse({'error': 'Invalid product_id'}, status=400)
             except Exception as e:
                 logger.exception(f"Error processing checkout.session.completed: {str(e)}")
                 return JsonResponse({'error': 'Processing error'}, status=500)
 
         elif event.type == 'checkout.session.expired':
-            # Optional: handle expired checkout sessions
-            logger.info(f"Checkout session {event.data.object.id} expired")
-            pass
+            # Handle expired checkout sessions - cancel reservation
+            session_id = event.data.object.id
+            logger.info(f"Checkout session {session_id} expired, cancelling reservation")
+
+            cancel_result = ReservationService.cancel_reservation(session_id)
+            if cancel_result['success']:
+                logger.info(f"Cancelled reservation for expired session {session_id}")
+            elif 'not found' not in cancel_result.get('error', ''):
+                logger.warning(
+                    f"Failed to cancel reservation for expired session {session_id}: "
+                    f"{cancel_result.get('error')}"
+                )
 
         else:
             # Log unsupported event types but return 200

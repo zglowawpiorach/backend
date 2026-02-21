@@ -18,6 +18,7 @@ class ProductSerializer(serializers.ModelSerializer):
     """
     image_url = serializers.SerializerMethodField()
     is_buyable = serializers.BooleanField(read_only=True)
+    status = serializers.CharField(read_only=True)
 
     class Meta:
         model = Product
@@ -85,3 +86,52 @@ class CheckoutResponseSerializer(serializers.Serializer):
     """
     checkout_url = serializers.URLField()
     session_id = serializers.CharField()
+
+
+class CheckAvailabilityRequestSerializer(serializers.Serializer):
+    """
+    Serializer for product availability check requests.
+    """
+    product_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=True,
+        allow_empty=False
+    )
+
+
+class ReserveBasketRequestSerializer(serializers.Serializer):
+    """
+    Serializer for basket reservation requests.
+    """
+    product_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=True,
+        allow_empty=False,
+        help_text="List of product IDs to reserve"
+    )
+    success_url = serializers.URLField(required=True)
+    cancel_url = serializers.URLField(required=True)
+    customer_email = serializers.EmailField(required=False, allow_null=True)
+
+
+class UnavailableProductSerializer(serializers.Serializer):
+    """Serializer for unavailable product details."""
+    id = serializers.IntegerField()
+    reason = serializers.CharField()
+    message = serializers.CharField()
+
+
+class CheckAvailabilityResponseSerializer(serializers.Serializer):
+    """Serializer for availability check response."""
+    available = serializers.ListField(child=serializers.IntegerField())
+    unavailable = UnavailableProductSerializer(many=True)
+
+
+class ReserveBasketResponseSerializer(serializers.Serializer):
+    """Serializer for basket reservation response."""
+    success = serializers.BooleanField()
+    checkout_url = serializers.URLField(required=False, allow_null=True)
+    session_id = serializers.CharField(required=False, allow_null=True)
+    expires_at = serializers.DateTimeField(required=False, allow_null=True)
+    unavailable_products = UnavailableProductSerializer(many=True, required=False)
+    error = serializers.CharField(required=False, allow_null=True)
