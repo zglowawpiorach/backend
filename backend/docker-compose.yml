@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: piorka-postgres
+    environment:
+      POSTGRES_DB: wagtail
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  stripe:
+    image: stripe/stripe-cli:latest
+    container_name: piorka-stripe
+    command: listen --forward-to host.docker.internal:8000/api/webhooks/stripe/ --events checkout.session.completed,checkout.session.expired
+    environment:
+      STRIPE_API_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_DEVICE_NAME: piorka-dev
+    ports:
+      - "12111:12111"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  postgres_data:

@@ -11,6 +11,14 @@ from datetime import datetime
 from django.conf import settings
 import stripe
 
+# Configure Stripe to use certifi's CA bundle for TLS connections
+# This fixes issues where the bundled certificate path is invalid
+try:
+    import certifi
+    stripe.default_ca_bundle_path = certifi.where()
+except ImportError:
+    pass  # certifi not installed, use Stripe's default
+
 logger = logging.getLogger(__name__)
 
 
@@ -432,6 +440,13 @@ class StripeSync:
                 'cancel_url': cancel_url,
                 'metadata': {
                     'product_ids': ','.join(str(p.pk) for p in products),
+                },
+                'invoice_creation': {'enabled': True},
+                'billing_address_collection': 'required',
+                'shipping_address_collection': {'allowed_countries': ['PL']},
+                'name_collection': {
+                    'business': {'enabled': True, 'optional': True},
+                    'individual': {'enabled': True, 'optional': False},
                 },
             }
 

@@ -2,10 +2,11 @@ import json
 import logging
 from django.http import JsonResponse
 from django.core.cache import cache
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from wagtail.images.models import Image
-from .models import Product, Event
+from .models import Product, Event, ProductStatus, ReservationStatus
 from .decorators import api_error_handler
 from .stripe_sync import StripeSync
 
@@ -56,9 +57,24 @@ def products_api(request):
     API endpoint to get active products.
     Usage: /api/products/
     Returns list of active products with their details.
+    Query params:
+      - status: 'active' (default), 'sold', 'all'
     """
-    # Get only active products
-    products = Product.objects.filter(active=True).prefetch_related('images')
+    # Get status filter from query string
+    status_filter = request.GET.get('status', 'active')
+
+    # Build queryset based on status filter
+    if status_filter == 'sold':
+        products = Product.objects.filter(status=ProductStatus.SOLD)
+    elif status_filter == 'all':
+        products = Product.objects.all()
+    else:
+        # Default: active products (includes RESERVED status for frontend to handle)
+        products = Product.objects.filter(active=True)
+
+    products = products.prefetch_related('images')
+
+    now = timezone.now()
 
     # Build response with product data
     product_list = []
@@ -73,6 +89,21 @@ def products_api(request):
                     'height': product_image.image.height,
                 })
 
+        # Check for active reservation
+        is_reserved = False
+        reserved_until = None
+
+        if product.status == ProductStatus.RESERVED:
+            # Check for active pending reservation that hasn't expired
+            active_reservation = product.reservations.filter(
+                reservation__status=ReservationStatus.PENDING,
+                reservation__expires_at__gt=now
+            ).select_related('reservation').first()
+
+            if active_reservation:
+                is_reserved = True
+                reserved_until = active_reservation.reservation.expires_at.isoformat()
+
         product_list.append({
             'id': product.id,
             'slug': product.slug,
@@ -82,6 +113,9 @@ def products_api(request):
             'opis': product.opis,
             'price': float(product.price),
             'cena': float(product.cena) if product.cena else None,
+            'status': product.status,
+            'is_reserved': is_reserved,
+            'reserved_until': reserved_until,
             'featured': product.featured,
             'nr_w_katalogu_zdjec': product.nr_w_katalogu_zdjec,
             'przeznaczenie_ogolne': product.przeznaczenie_ogolne,

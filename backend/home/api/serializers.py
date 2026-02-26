@@ -3,9 +3,10 @@ REST API serializers for Product model and checkout requests.
 """
 
 import logging
+from django.utils import timezone
 from rest_framework import serializers
 from wagtail.images.models import Image
-from home.models import Product, ProductStatus
+from home.models import Product, ProductStatus, ReservationStatus
 
 logger = logging.getLogger(__name__)
 
@@ -15,10 +16,13 @@ class ProductSerializer(serializers.ModelSerializer):
     Serializer for Product model.
 
     Includes image URL as a rendition URL for frontend consumption.
+    Includes reservation info for displaying reserved status with countdown.
     """
     image_url = serializers.SerializerMethodField()
     is_buyable = serializers.BooleanField(read_only=True)
     status = serializers.CharField(read_only=True)
+    is_reserved = serializers.SerializerMethodField()
+    reserved_until = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -35,6 +39,8 @@ class ProductSerializer(serializers.ModelSerializer):
             'sold_at',
             'image_url',
             'is_buyable',
+            'is_reserved',
+            'reserved_until',
             'featured',
             'nr_w_katalogu_zdjec',
             'przeznaczenie_ogolne',
@@ -65,6 +71,58 @@ class ProductSerializer(serializers.ModelSerializer):
                 logger.warning(f"Could not create rendition for product {obj.pk}: {e}")
                 # Fallback to original file URL
                 return primary_image.file.url if primary_image.file else None
+        return None
+
+    def get_is_reserved(self, obj):
+        """
+        Check if product has an active (non-expired) reservation.
+
+        Returns True only if:
+        - Product status is RESERVED
+        - There's a pending reservation
+        - Reservation hasn't expired yet
+
+        Frontend should treat product as available if this returns False,
+        even if status is 'reserved' (stale reservation).
+        """
+        if obj.status != ProductStatus.RESERVED:
+            return False
+
+        now = timezone.now()
+
+        # Check for active pending reservation that hasn't expired
+        active_reservation = obj.reservations.filter(
+            reservation__status=ReservationStatus.PENDING,
+            reservation__expires_at__gt=now
+        ).select_related('reservation').first()
+
+        return active_reservation is not None
+
+    def get_reserved_until(self, obj):
+        """
+        Get expiration time of active reservation.
+
+        Returns ISO datetime string if product is actively reserved,
+        None otherwise.
+
+        Frontend can use this to:
+        1. Display countdown timer
+        2. Ignore reserved status if time is in the past
+        """
+        if obj.status != ProductStatus.RESERVED:
+            return None
+
+        now = timezone.now()
+
+        # Get the active pending reservation
+        active_reservation = obj.reservations.filter(
+            reservation__status=ReservationStatus.PENDING,
+            reservation__expires_at__gt=now
+        ).select_related('reservation').first()
+
+        if active_reservation:
+            return active_reservation.reservation.expires_at.isoformat()
+
         return None
 
 
