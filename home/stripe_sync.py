@@ -85,6 +85,29 @@ class StripeSync:
         return int(float(price_value) * 100)
 
     @staticmethod
+    def _get_discount_amount(product) -> Optional[int]:
+        """
+        Calculate discount amount in grosze if product has a valid discount price.
+
+        Args:
+            product: Product instance
+
+        Returns:
+            Discount amount in grosze, or None if no valid discount
+        """
+        if not product.cena:
+            return None
+
+        base_price_grosze = StripeSync._price_to_grosze(product.price)
+        discount_price_grosze = StripeSync._price_to_grosze(product.cena)
+
+        # Only return discount if cena is lower than price
+        if discount_price_grosze < base_price_grosze:
+            return base_price_grosze - discount_price_grosze
+
+        return None
+
+    @staticmethod
     def create_or_update_product(product) -> dict:
         """
         Create or update a Stripe Product and Price for the given Product.
@@ -335,6 +358,18 @@ class StripeSync:
                 },
             }
 
+            # Apply discount if product has a valid discount price (cena)
+            discount_amount = StripeSync._get_discount_amount(product)
+            if discount_amount:
+                session_params['discounts'] = [{
+                    'coupon_data': {
+                        'amount_off': discount_amount,
+                        'currency': SHIPPING_CURRENCY,
+                        'name': f'Promocja - {product.tytul or product.name}',
+                    }
+                }]
+                logger.info(f"Applied discount of {discount_amount} grosze for product {product.pk}")
+
             # Add shipping
             session_params['shipping_options'] = [
                 {
@@ -432,6 +467,15 @@ class StripeSync:
                 for product in products
             ]
 
+            # Calculate total discount across all products with discount prices
+            total_discount = 0
+            discounted_product_names = []
+            for product in products:
+                discount = StripeSync._get_discount_amount(product)
+                if discount:
+                    total_discount += discount
+                    discounted_product_names.append(product.tytul or product.name)
+
             # Build session params
             session_params = {
                 'mode': 'payment',
@@ -449,6 +493,17 @@ class StripeSync:
                     'individual': {'enabled': True, 'optional': False},
                 },
             }
+
+            # Apply combined discount if any products have discount prices
+            if total_discount > 0:
+                session_params['discounts'] = [{
+                    'coupon_data': {
+                        'amount_off': total_discount,
+                        'currency': SHIPPING_CURRENCY,
+                        'name': f'Promocja ({len(discounted_product_names)} produktów)' if len(discounted_product_names) > 1 else f'Promocja - {discounted_product_names[0]}',
+                    }
+                }]
+                logger.info(f"Applied combined discount of {total_discount} grosze for basket with {len(discounted_product_names)} discounted products")
 
             # Add shipping (only once, not per product)
             session_params['shipping_options'] = [
