@@ -14,7 +14,7 @@ from django.conf import settings
 
 import stripe
 
-from home.models import Product
+from home.models import Product, Coupon
 from home.stripe_sync import StripeSync
 from home.reservation import ReservationService
 
@@ -144,6 +144,38 @@ def stripe_webhook(request):
                     f"Failed to cancel reservation for expired session {session_id}: "
                     f"{cancel_result.get('error')}"
                 )
+
+        elif event.type == 'coupon.updated':
+            # Sync times_redeemed from Stripe
+            stripe_coupon = event.data.object
+            wagtail_id = stripe_coupon.metadata.get('wagtail_id')
+
+            if wagtail_id:
+                try:
+                    coupon = Coupon.objects.get(pk=int(wagtail_id))
+                    result = StripeSync.sync_coupon_redemptions(coupon)
+                    if result['success']:
+                        logger.info(f"Synced coupon {wagtail_id} redemptions from Stripe")
+                except Coupon.DoesNotExist:
+                    logger.warning(f"Coupon {wagtail_id} not found for webhook sync")
+
+        elif event.type == 'promotion_code.updated':
+            # Sync active status from Stripe
+            stripe_promo = event.data.object
+            wagtail_id = stripe_promo.metadata.get('wagtail_id')
+
+            if wagtail_id:
+                try:
+                    coupon = Coupon.objects.get(pk=int(wagtail_id))
+                    new_status = 'active' if stripe_promo.active else 'inactive'
+
+                    if coupon.status != new_status:
+                        coupon._skip_stripe_sync = True
+                        coupon.status = new_status
+                        coupon.save(update_fields=['status'])
+                        logger.info(f"Updated coupon {wagtail_id} status from Stripe webhook")
+                except Coupon.DoesNotExist:
+                    logger.warning(f"Coupon {wagtail_id} not found for webhook sync")
 
         else:
             # Log unsupported event types but return 200
