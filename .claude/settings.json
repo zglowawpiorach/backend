@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(git -C /Users/seba/piorka diff home/wagtail_hooks.py)",
-      "Bash(git -C /Users/seba/piorka status)"
+      "Bash(git -C /Users/seba/piorka status)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs"
     ]
   }
 }

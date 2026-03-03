@@ -496,6 +496,7 @@ class StripeSync:
                 'line_items': line_items,
                 'success_url': success_url,
                 'cancel_url': cancel_url,
+                'allow_promotion_codes': True,
                 'metadata': {
                     'product_ids': ','.join(str(p.pk) for p in products),
                 },
