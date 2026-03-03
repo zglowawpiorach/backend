@@ -426,7 +426,8 @@ class StripeSync:
         products: List,
         success_url: str,
         cancel_url: str,
-        customer_email: Optional[str] = None
+        customer_email: Optional[str] = None,
+        coupon = None
     ) -> dict:
         """
         Create a Stripe Checkout Session for multiple products (basket).
@@ -506,6 +507,13 @@ class StripeSync:
                     'individual': {'enabled': True, 'optional': False},
                 },
             }
+
+            # Apply coupon if provided and valid
+            if coupon and coupon.is_valid and coupon.stripe_promotion_code_id:
+                session_params['discounts'] = [{
+                    'promotion_code': coupon.stripe_promotion_code_id
+                }]
+                logger.info(f"Applied coupon {coupon.code} to checkout session")
 
             # Add shipping (only once, not per product)
             session_params['shipping_options'] = [

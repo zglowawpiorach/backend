@@ -229,6 +229,17 @@ def reserve_basket(request):
     cancel_url = serializer.validated_data['cancel_url']
     customer_email = serializer.validated_data.get('customer_email')
 
+    # Get coupon from request
+    coupon_code = request.data.get('coupon_code')
+    coupon = None
+    if coupon_code:
+        try:
+            coupon = Coupon.objects.get(code=coupon_code.upper())
+            if not coupon.is_valid:
+                coupon = None  # Ignore invalid coupons
+        except Coupon.DoesNotExist:
+            pass  # Ignore non-existent coupons
+
     # Validate product IDs exist
     products = list(Product.objects.filter(pk__in=product_ids))
 
@@ -249,7 +260,8 @@ def reserve_basket(request):
         products=products,
         success_url=success_url,
         cancel_url=cancel_url,
-        customer_email=customer_email
+        customer_email=customer_email,
+        coupon=coupon,
     )
 
     if not stripe_result['success']:
