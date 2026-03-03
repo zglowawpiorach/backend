@@ -340,12 +340,31 @@ class StripeSync:
                     success_url = f"{success_url}?session_id={{CHECKOUT_SESSION_ID}}"
 
             # Build line items
-            line_items = [
-                {
-                    'price': product.stripe_price_id,
-                    'quantity': 1,
-                }
-            ]
+            # If product has a discount price (cena), use price_data to show the discounted price
+            # Otherwise, use the existing Stripe Price
+            discount_amount = StripeSync._get_discount_amount(product)
+            if discount_amount:
+                # Use price_data with the discounted price
+                final_price_grosze = StripeSync._price_to_grosze(product.cena)
+                line_items = [
+                    {
+                        'price_data': {
+                            'currency': SHIPPING_CURRENCY,
+                            'product': product.stripe_product_id,
+                            'unit_amount': final_price_grosze,
+                        },
+                        'quantity': 1,
+                    }
+                ]
+                logger.info(f"Using discounted price {final_price_grosze} grosze for product {product.pk} (discount: {discount_amount} grosze)")
+            else:
+                # Use existing Stripe Price
+                line_items = [
+                    {
+                        'price': product.stripe_price_id,
+                        'quantity': 1,
+                    }
+                ]
 
             # Build session params
             session_params = {
@@ -357,18 +376,6 @@ class StripeSync:
                     'product_id': str(product.pk),
                 },
             }
-
-            # Apply discount if product has a valid discount price (cena)
-            discount_amount = StripeSync._get_discount_amount(product)
-            if discount_amount:
-                session_params['discounts'] = [{
-                    'coupon_data': {
-                        'amount_off': discount_amount,
-                        'currency': SHIPPING_CURRENCY,
-                        'name': f'Promocja - {product.tytul or product.name}',
-                    }
-                }]
-                logger.info(f"Applied discount of {discount_amount} grosze for product {product.pk}")
 
             # Add shipping
             session_params['shipping_options'] = [
@@ -459,22 +466,28 @@ class StripeSync:
                     success_url = f"{success_url}?session_id={{CHECKOUT_SESSION_ID}}"
 
             # Build line items - one per product (quantity always 1)
-            line_items = [
-                {
-                    'price': product.stripe_price_id,
-                    'quantity': 1,
-                }
-                for product in products
-            ]
-
-            # Calculate total discount across all products with discount prices
-            total_discount = 0
-            discounted_product_names = []
+            # Use price_data for products with discount prices, otherwise use Stripe Price
+            line_items = []
             for product in products:
                 discount = StripeSync._get_discount_amount(product)
                 if discount:
-                    total_discount += discount
-                    discounted_product_names.append(product.tytul or product.name)
+                    # Use price_data with the discounted price
+                    final_price_grosze = StripeSync._price_to_grosze(product.cena)
+                    line_items.append({
+                        'price_data': {
+                            'currency': SHIPPING_CURRENCY,
+                            'product': product.stripe_product_id,
+                            'unit_amount': final_price_grosze,
+                        },
+                        'quantity': 1,
+                    })
+                    logger.info(f"Using discounted price {final_price_grosze} grosze for product {product.pk} in basket")
+                else:
+                    # Use existing Stripe Price
+                    line_items.append({
+                        'price': product.stripe_price_id,
+                        'quantity': 1,
+                    })
 
             # Build session params
             session_params = {
@@ -493,17 +506,6 @@ class StripeSync:
                     'individual': {'enabled': True, 'optional': False},
                 },
             }
-
-            # Apply combined discount if any products have discount prices
-            if total_discount > 0:
-                session_params['discounts'] = [{
-                    'coupon_data': {
-                        'amount_off': total_discount,
-                        'currency': SHIPPING_CURRENCY,
-                        'name': f'Promocja ({len(discounted_product_names)} produktów)' if len(discounted_product_names) > 1 else f'Promocja - {discounted_product_names[0]}',
-                    }
-                }]
-                logger.info(f"Applied combined discount of {total_discount} grosze for basket with {len(discounted_product_names)} discounted products")
 
             # Add shipping (only once, not per product)
             session_params['shipping_options'] = [
@@ -587,4 +589,170 @@ class StripeSync:
         except Exception as e:
             error_msg = f"Unexpected error: {str(e)}"
             logger.error(f"Error cancelling session {session_id}: {error_msg}")
+            return {'success': False, 'error': error_msg}
+
+    @staticmethod
+    def create_or_update_coupon(coupon) -> dict:
+        """
+        Create or update a Stripe Coupon and PromotionCode for the given Coupon.
+
+        If stripe_coupon_id is empty, creates new Stripe Coupon and PromotionCode.
+        If stripe_coupon_id exists, updates the Stripe Coupon.
+
+        Args:
+            coupon: Coupon instance
+
+        Returns:
+            Dict with 'success' (bool) and optional 'error' message
+        """
+        try:
+            api_key = StripeSync._get_stripe_api_key()
+            stripe.api_key = api_key
+
+            is_new = not bool(coupon.stripe_coupon_id)
+
+            # Build coupon params
+            coupon_params = {
+                'metadata': {
+                    'wagtail_id': str(coupon.pk),
+                    'code': coupon.code,
+                },
+            }
+
+            # Set discount
+            if coupon.discount_type == 'percent':
+                coupon_params['percent_off'] = coupon.percent_off
+            else:
+                coupon_params['amount_off'] = coupon.amount_off
+                coupon_params['currency'] = SHIPPING_CURRENCY
+
+            # Set optional limits
+            if coupon.max_redemptions:
+                coupon_params['max_redemptions'] = coupon.max_redemptions
+
+            if coupon.expires_at:
+                coupon_params['redeem_by'] = int(coupon.expires_at.timestamp())
+
+            if is_new:
+                # Create Stripe Coupon
+                stripe_coupon = stripe.Coupon.create(**coupon_params)
+                coupon.stripe_coupon_id = stripe_coupon.id
+                logger.info(f"Created Stripe coupon {stripe_coupon.id} for Coupon {coupon.pk}")
+
+                # Create PromotionCode with the customer-facing code
+                promo_params = {
+                    'coupon': stripe_coupon.id,
+                    'code': coupon.code,
+                    'active': coupon.status == 'active',
+                    'metadata': {
+                        'wagtail_id': str(coupon.pk),
+                    },
+                }
+                stripe_promo = stripe.PromotionCode.create(**promo_params)
+                coupon.stripe_promotion_code_id = stripe_promo.id
+                logger.info(f"Created Stripe promotion code {stripe_promo.id} for Coupon {coupon.pk}")
+
+            else:
+                # Update existing Stripe Coupon
+                # Note: Stripe Coupons have limited updatable fields
+                stripe.Coupon.modify(
+                    coupon.stripe_coupon_id,
+                    metadata=coupon_params['metadata'],
+                )
+                logger.info(f"Updated Stripe coupon {coupon.stripe_coupon_id}")
+
+                # Update PromotionCode active status
+                if coupon.stripe_promotion_code_id:
+                    stripe.PromotionCode.modify(
+                        coupon.stripe_promotion_code_id,
+                        active=coupon.status == 'active',
+                    )
+
+            # Save the updated IDs
+            coupon._skip_stripe_sync = True
+            coupon.save(update_fields=['stripe_coupon_id', 'stripe_promotion_code_id'])
+
+            return {'success': True}
+
+        except stripe.error.StripeError as e:
+            error_msg = f"Stripe API error: {str(e)}"
+            logger.error(f"Stripe coupon sync error for Coupon {coupon.pk}: {error_msg}")
+            return {'success': False, 'error': error_msg}
+        except Exception as e:
+            error_msg = f"Unexpected error: {str(e)}"
+            logger.error(f"Stripe coupon sync error for Coupon {coupon.pk}: {error_msg}")
+            return {'success': False, 'error': error_msg}
+
+    @staticmethod
+    def deactivate_coupon(coupon) -> dict:
+        """
+        Deactivate a coupon by setting its PromotionCode to inactive.
+
+        Args:
+            coupon: Coupon instance
+
+        Returns:
+            Dict with 'success' (bool) and optional 'error' message
+        """
+        if not coupon.stripe_promotion_code_id:
+            logger.warning(f"Cannot deactivate Coupon {coupon.pk}: no stripe_promotion_code_id")
+            return {'success': False, 'error': 'No stripe_promotion_code_id'}
+
+        try:
+            api_key = StripeSync._get_stripe_api_key()
+            stripe.api_key = api_key
+
+            stripe.PromotionCode.modify(
+                coupon.stripe_promotion_code_id,
+                active=False,
+            )
+
+            logger.info(f"Deactivated Stripe promotion code {coupon.stripe_promotion_code_id}")
+            return {'success': True}
+
+        except stripe.error.StripeError as e:
+            error_msg = f"Stripe API error: {str(e)}"
+            logger.error(f"Stripe coupon deactivation error for Coupon {coupon.pk}: {error_msg}")
+            return {'success': False, 'error': error_msg}
+        except Exception as e:
+            error_msg = f"Unexpected error: {str(e)}"
+            logger.error(f"Stripe coupon deactivation error for Coupon {coupon.pk}: {error_msg}")
+            return {'success': False, 'error': error_msg}
+
+    @staticmethod
+    def sync_coupon_redemptions(coupon) -> dict:
+        """
+        Sync times_redeemed from Stripe Coupon.
+
+        Args:
+            coupon: Coupon instance
+
+        Returns:
+            Dict with 'success' (bool), 'times_redeemed', and optional 'error'
+        """
+        if not coupon.stripe_coupon_id:
+            return {'success': False, 'error': 'No stripe_coupon_id'}
+
+        try:
+            api_key = StripeSync._get_stripe_api_key()
+            stripe.api_key = api_key
+
+            stripe_coupon = stripe.Coupon.retrieve(coupon.stripe_coupon_id)
+            times_redeemed = stripe_coupon.times_redeemed or 0
+
+            # Update local model
+            coupon._skip_stripe_sync = True
+            coupon.times_redeemed = times_redeemed
+            coupon.save(update_fields=['times_redeemed'])
+
+            logger.info(f"Synced times_redeemed={times_redeemed} for Coupon {coupon.pk}")
+            return {'success': True, 'times_redeemed': times_redeemed}
+
+        except stripe.error.StripeError as e:
+            error_msg = f"Stripe API error: {str(e)}"
+            logger.error(f"Stripe coupon sync error for Coupon {coupon.pk}: {error_msg}")
+            return {'success': False, 'error': error_msg}
+        except Exception as e:
+            error_msg = f"Unexpected error: {str(e)}"
+            logger.error(f"Stripe coupon sync error for Coupon {coupon.pk}: {error_msg}")
             return {'success': False, 'error': error_msg}
