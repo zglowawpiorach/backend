@@ -717,6 +717,18 @@ class Coupon(models.Model):
             return False
         return True
 
+    def discount_display(self) -> str:
+        """Return formatted discount string for admin display."""
+        if self.discount_type == 'percent':
+            return f"{self.percent_off}%"
+        return f"{self.amount_off / 100:.2f} PLN"
+    discount_display.short_description = 'Zniżka'
+
+    def is_valid_display(self) -> str:
+        """Return 'Tak' or 'Nie' for admin display."""
+        return "Tak" if self.is_valid else "Nie"
+    is_valid_display.short_description = 'Ważny'
+
     def __str__(self):
         return self.code
 

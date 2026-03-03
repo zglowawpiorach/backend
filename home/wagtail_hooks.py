@@ -49,16 +49,6 @@ class CouponViewSet(SnippetViewSet):
     list_filter = ['status', 'discount_type']
     search_fields = ['code']
 
-    def discount_display(self, obj):
-        if obj.discount_type == 'percent':
-            return f"{obj.percent_off}%"
-        return f"{obj.amount_off / 100:.2f} PLN"
-    discount_display.short_description = 'Zniżka'
-
-    def is_valid_display(self, obj):
-        return "Tak" if obj.is_valid else "Nie"
-    is_valid_display.short_description = 'Ważny'
-
 
 register_snippet(ProductViewSet)
 register_snippet(EventViewSet)
