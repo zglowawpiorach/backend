@@ -595,11 +595,13 @@ class Coupon(models.Model):
         verbose_name="Zniżka procentowa",
         help_text="Np. 20 dla 20% zniżki"
     )
-    amount_off = models.PositiveIntegerField(
+    amount_off = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
         null=True,
         blank=True,
-        verbose_name="Zniżka kwotowa (w groszach)",
-        help_text="Np. 2000 dla 20 PLN zniżki"
+        verbose_name="Zniżka kwotowa (PLN)",
+        help_text="Np. 20 dla 20 PLN zniżki"
     )
 
     # Optional limits
@@ -721,7 +723,7 @@ class Coupon(models.Model):
         """Return formatted discount string for admin display."""
         if self.discount_type == 'percent':
             return f"{self.percent_off}%"
-        return f"{self.amount_off / 100:.2f} PLN"
+        return f"{self.amount_off:.2f} PLN"
     discount_display.short_description = 'Zniżka'
 
     def is_valid_display(self) -> str:

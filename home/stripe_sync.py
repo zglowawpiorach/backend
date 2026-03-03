@@ -534,7 +534,10 @@ class StripeSync:
                 }
             ]
 
-            # Add customer email if provided
+            # Collect phone number (required for shipping)
+            session_params['phone_number_collection'] = {'enabled': True}
+
+            # Pre-fill customer email if provided
             if customer_email:
                 session_params['customer_email'] = customer_email
                 session_params['payment_intent_data'] = {
@@ -632,7 +635,9 @@ class StripeSync:
             if coupon.discount_type == 'percent':
                 coupon_params['percent_off'] = coupon.percent_off
             else:
-                coupon_params['amount_off'] = coupon.amount_off
+                # Convert PLN to grosze (multiply by 100)
+                amount_grosze = int(float(coupon.amount_off) * 100)
+                coupon_params['amount_off'] = amount_grosze
                 coupon_params['currency'] = SHIPPING_CURRENCY
 
             # Set optional limits

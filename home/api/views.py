@@ -472,7 +472,7 @@ def validate_coupon(request):
         response_data['message'] = f'{coupon.percent_off}% zniżki zastosowane'
     else:
         response_data['amount_off'] = coupon.amount_off
-        response_data['amount_off_pln'] = coupon.amount_off / 100
-        response_data['message'] = f'{coupon.amount_off / 100:.2f} PLN zniżki zastosowane'
+        response_data['amount_off_pln'] = coupon.amount_off
+        response_data['message'] = f'{coupon.amount_off:.2f} PLN zniżki zastosowane'
 
     return Response(response_data, status=status.HTTP_200_OK)
