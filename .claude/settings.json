@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/seba/piorka diff home/wagtail_hooks.py)",
+      "Bash(git -C /Users/seba/piorka status)"
+    ]
+  }
+}
