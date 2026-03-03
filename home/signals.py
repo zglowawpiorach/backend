@@ -9,7 +9,7 @@ import logging
 from django.db.models.signals import pre_save, post_save
 from django.dispatch import receiver
 
-from .models import Product, ProductStatus
+from .models import Product, ProductStatus, Coupon, CouponStatus
 from .stripe_sync import StripeSync
 
 logger = logging.getLogger(__name__)
@@ -78,3 +78,65 @@ def sync_product_to_stripe(sender, instance, created, **kwargs):
     except Exception as e:
         # Never crash the save operation due to Stripe sync issues
         logger.exception(f"Unexpected error in Stripe sync signal for product {instance.pk}: {str(e)}")
+
+
+@receiver(pre_save, sender=Coupon)
+def track_coupon_status_change(sender, instance, **kwargs):
+    """
+    Track the old status of a coupon before save.
+    """
+    if instance.pk:
+        try:
+            old_instance = Coupon.objects.get(pk=instance.pk)
+            instance._old_status = old_instance.status
+        except Coupon.DoesNotExist:
+            instance._old_status = None
+
+
+@receiver(post_save, sender=Coupon)
+def sync_coupon_to_stripe(sender, instance, created, **kwargs):
+    """
+    Sync coupon to Stripe after save.
+
+    - Skips if _skip_stripe_sync is True
+    - If status changed to inactive: deactivate in Stripe
+    - If status is active: create or update in Stripe
+    """
+    from .models import Coupon, CouponStatus
+
+    # Skip if explicitly requested
+    if hasattr(instance, '_skip_stripe_sync') and instance._skip_stripe_sync:
+        logger.debug(f"Skipping Stripe sync for coupon {instance.pk}")
+        return
+
+    # Skip if Stripe is not configured
+    from django.conf import settings
+    if not hasattr(settings, 'STRIPE_SECRET_KEY') or not settings.STRIPE_SECRET_KEY:
+        logger.debug("Stripe not configured, skipping coupon sync")
+        return
+
+    try:
+        current_status = instance.status
+        old_status = instance._old_status
+
+        # If status changed to inactive
+        if current_status == CouponStatus.INACTIVE and old_status != CouponStatus.INACTIVE:
+            logger.info(f"Coupon {instance.pk} deactivated, syncing to Stripe")
+            result = StripeSync.deactivate_coupon(instance)
+            if not result['success']:
+                logger.error(f"Failed to deactivate Stripe coupon: {result.get('error')}")
+            return
+
+        # If status is active
+        if current_status == CouponStatus.ACTIVE:
+            if created or old_status != CouponStatus.ACTIVE:
+                logger.info(f"Coupon {instance.pk} activated/created, syncing to Stripe")
+            else:
+                logger.debug(f"Coupon {instance.pk} updated, syncing to Stripe")
+
+            result = StripeSync.create_or_update_coupon(instance)
+            if not result['success']:
+                logger.error(f"Failed to sync Stripe coupon: {result.get('error')}")
+
+    except Exception as e:
+        logger.exception(f"Unexpected error in Stripe sync signal for coupon {instance.pk}: {str(e)}")
