@@ -11,7 +11,8 @@ from home.api.views import (
     check_availability,
     reserve_basket,
     cancel_checkout,
-    cleanup_expired_reservations
+    cleanup_expired_reservations,
+    validate_coupon
 )
 
 # Create router for ViewSet
@@ -27,4 +28,5 @@ urlpatterns = [
     path('reserve-basket/', reserve_basket, name='reserve_basket'),
     path('cancel-checkout/', cancel_checkout, name='cancel_checkout'),
     path('cleanup-expired-reservations/', cleanup_expired_reservations, name='cleanup_expired_reservations'),
+    path('validate-coupon/', validate_coupon, name='validate_coupon'),
 ]
