@@ -19,8 +19,6 @@ urlpatterns = [
     path("api/products/", home_views.products_api, name="products_api"),
     path("api/events/", home_views.events_api, name="events_api"),
     path("api/product-filters/", home_views.product_filters_api, name="product_filters_api"),
-    # Stripe checkout endpoint
-    path("api/checkout/create/", home_views.create_checkout_session, name="checkout_create"),
     # New REST API v1 endpoints with Stripe integration
     path("api/v1/", include("home.api.urls")),
     # Stripe webhook endpoint

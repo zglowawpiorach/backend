@@ -4,7 +4,15 @@
       "Bash(git -C /Users/seba/piorka diff home/wagtail_hooks.py)",
       "Bash(git -C /Users/seba/piorka status)",
       "mcp__plugin_context7_context7__resolve-library-id",
-      "mcp__plugin_context7_context7__query-docs"
+      "mcp__plugin_context7_context7__query-docs",
+      "WebSearch",
+      "Bash(python -c \"from home.api.furgonetka_views import orders, order_tracking_number, order_payments; print\\(''Import successful''\\)\")",
+      "Bash(DJANGO_SETTINGS_MODULE=core.settings.dev python -c \"from home.api.furgonetka_views import orders, order_tracking_number, order_payments; print\\(''Import successful''\\)\")",
+      "Bash(DJANGO_SETTINGS_MODULE=core.settings.dev python -c \"import django; django.setup\\(\\); from home.api.furgonetka_views import orders, order_tracking_number, order_payments; print\\(''Import successful''\\)\")",
+      "Bash(DJANGO_SETTINGS_MODULE=core.settings.dev python -c \"import django; django.setup\\(\\); from django.urls import reverse; print\\(''URL config OK''\\)\")",
+      "Bash(DJANGO_SETTINGS_MODULE=core.settings.dev python -c \"import django; django.setup\\(\\); from home.api.views import reserve_basket; print\\(''Import successful''\\)\")",
+      "Bash(DJANGO_SETTINGS_MODULE=core.settings.dev python -c \":*)",
+      "Bash(FURGONETKA_SANDBOX=true DJANGO_SETTINGS_MODULE=core.settings.dev python -c \":*)"
     ]
   }
 }

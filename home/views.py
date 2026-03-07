@@ -1,14 +1,10 @@
-import json
 import logging
 from django.http import JsonResponse
 from django.core.cache import cache
 from django.utils import timezone
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
 from wagtail.images.models import Image
 from .models import Product, Event, ProductStatus, ReservationStatus
 from .decorators import api_error_handler
-from .stripe_sync import StripeSync
 
 logger = logging.getLogger(__name__)
 
@@ -243,80 +239,3 @@ def product_filters_api(request):
     cache.set(cache_key, response_data, 86400)
 
     return JsonResponse(response_data)
-
-
-@csrf_exempt
-@require_http_methods(["POST"])
-def create_checkout_session(request):
-    """
-    API endpoint to create a Stripe Checkout Session.
-
-    Accepts product IDs in request body and returns a Stripe checkout URL.
-
-    POST /api/checkout/create/
-    Body: {"product_ids": [1, 5, 9], "success_url": "...", "cancel_url": "...", "email": "optional"}
-
-    Returns:
-    {
-        "success": true,
-        "checkout_url": "https://checkout.stripe.com/...",
-        "session_id": "cs_..."
-    }
-    """
-    try:
-        # Parse request body
-        data = json.loads(request.body)
-        product_ids = data.get('product_ids', [])
-        success_url = data.get('success_url', '')
-        cancel_url = data.get('cancel_url', '')
-        customer_email = data.get('email')
-
-        if not product_ids:
-            return JsonResponse({'success': False, 'error': 'No products provided'}, status=400)
-
-        if not success_url or not cancel_url:
-            return JsonResponse({'success': False, 'error': 'success_url and cancel_url are required'}, status=400)
-
-        # Fetch products
-        products = Product.objects.filter(id__in=product_ids, status='active')
-
-        if len(products) != len(product_ids):
-            found_ids = list(products.values_list('id', flat=True))
-            missing_ids = set(product_ids) - set(found_ids)
-            return JsonResponse({
-                'success': False,
-                'error': f'Products not found or not active: {missing_ids}'
-            }, status=400)
-
-        # Create checkout session
-        if len(products) == 1:
-            # Single product - use existing method
-            result = StripeSync.create_checkout_session(
-                product=products[0],
-                success_url=success_url,
-                cancel_url=cancel_url,
-                customer_email=customer_email
-            )
-        else:
-            # Multiple products - use basket method
-            result = StripeSync.create_basket_checkout_session(
-                products=list(products),
-                success_url=success_url,
-                cancel_url=cancel_url,
-                customer_email=customer_email
-            )
-
-        if result['success']:
-            return JsonResponse({
-                'success': True,
-                'checkout_url': result['checkout_url'],
-                'session_id': result['session_id'],
-            })
-        else:
-            return JsonResponse({'success': False, 'error': result.get('error')}, status=400)
-
-    except json.JSONDecodeError:
-        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
-    except Exception as e:
-        logger.exception(f"Unexpected error in create_checkout_session: {str(e)}")
-        return JsonResponse({'success': False, 'error': 'Internal server error'}, status=500)

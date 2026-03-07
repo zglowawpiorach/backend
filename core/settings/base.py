@@ -282,6 +282,11 @@ LOGGING = {
             'level': 'DEBUG',
             'propagate': False,
         },
+        'home': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
     },
 }
 
@@ -289,6 +294,10 @@ LOGGING = {
 STRIPE_PUBLIC_KEY = os.environ.get('STRIPE_PUBLIC_KEY', '')
 STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+
+# Furgonetka webhook token (for Furgonetka to call our API)
+# Main config is now in database: home.FurgonetkaConfig and home.FurgonetkaService
+FURGONETKA_API_TOKEN = os.environ.get('FURGONETKA_API_TOKEN', '')
 
 # REST Framework configuration
 REST_FRAMEWORK = {

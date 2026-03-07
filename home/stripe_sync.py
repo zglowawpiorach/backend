@@ -308,7 +308,9 @@ class StripeSync:
         product,
         success_url: str,
         cancel_url: str,
-        customer_email: Optional[str] = None
+        customer_email: Optional[str] = None,
+        furgonetka_service_id: Optional[str] = None,
+        furgonetka_locker_id: Optional[str] = None,
     ) -> dict:
         """
         Create a Stripe Checkout Session for a single product purchase.
@@ -318,6 +320,8 @@ class StripeSync:
             success_url: URL to redirect after successful payment
             cancel_url: URL to redirect if payment is cancelled
             customer_email: Optional customer email for pre-filling
+            furgonetka_service_id: Furgonetka shipping service ID (e.g., 'inpost', 'dpd')
+            furgonetka_locker_id: InPost locker ID if shipping to paczkomat
 
         Returns:
             Dict with 'success' (bool), 'checkout_url' (str), and optional 'error' message
@@ -367,6 +371,7 @@ class StripeSync:
                 ]
 
             # Build session params
+            logger.info(f"[Stripe] Creating single product session with furgonetka_service_id={furgonetka_service_id}, furgonetka_locker_id={furgonetka_locker_id}")
             session_params = {
                 'mode': 'payment',
                 'line_items': line_items,
@@ -374,6 +379,8 @@ class StripeSync:
                 'cancel_url': cancel_url,
                 'metadata': {
                     'product_id': str(product.pk),
+                    'furgonetka_service_id': furgonetka_service_id or '',
+                    'furgonetka_locker_id': furgonetka_locker_id or '',
                 },
             }
 
@@ -403,6 +410,10 @@ class StripeSync:
                 }
 
             # Create the checkout session
+            logger.info(f"[Stripe] ========== SENDING TO STRIPE (single product) ==========")
+            logger.info(f"[Stripe] Full session_params: {session_params}")
+            logger.info(f"[Stripe] =============================================================")
+
             session = stripe.checkout.Session.create(**session_params)
 
             logger.info(f"Created checkout session {session.id} for product {product.pk}")
@@ -427,7 +438,9 @@ class StripeSync:
         success_url: str,
         cancel_url: str,
         customer_email: Optional[str] = None,
-        coupon = None
+        coupon = None,
+        furgonetka_service_id: Optional[str] = None,
+        furgonetka_locker_id: Optional[str] = None,
     ) -> dict:
         """
         Create a Stripe Checkout Session for multiple products (basket).
@@ -440,6 +453,9 @@ class StripeSync:
             success_url: URL to redirect after successful payment
             cancel_url: URL to redirect if payment is cancelled
             customer_email: Optional customer email for pre-filling
+            coupon: Optional Coupon instance to apply discount
+            furgonetka_service_id: Furgonetka shipping service ID (e.g., 'inpost', 'dpd')
+            furgonetka_locker_id: InPost locker ID if shipping to paczkomat
 
         Returns:
             Dict with 'success' (bool), 'checkout_url' (str), 'session_id' (str),
@@ -491,6 +507,7 @@ class StripeSync:
                     })
 
             # Build session params
+            logger.info(f"[Stripe] Creating basket session with furgonetka_service_id={furgonetka_service_id}, furgonetka_locker_id={furgonetka_locker_id}")
             session_params = {
                 'mode': 'payment',
                 'line_items': line_items,
@@ -499,14 +516,12 @@ class StripeSync:
                 'allow_promotion_codes': True,
                 'metadata': {
                     'product_ids': ','.join(str(p.pk) for p in products),
+                    'furgonetka_service_id': furgonetka_service_id or '',
+                    'furgonetka_locker_id': furgonetka_locker_id or '',
                 },
                 'invoice_creation': {'enabled': True},
                 'billing_address_collection': 'required',
                 'shipping_address_collection': {'allowed_countries': ['PL']},
-                'name_collection': {
-                    'business': {'enabled': True, 'optional': True},
-                    'individual': {'enabled': True, 'optional': False},
-                },
             }
 
             # Apply coupon if provided and valid
@@ -545,6 +560,10 @@ class StripeSync:
                 }
 
             # Create the checkout session
+            logger.info(f"[Stripe] ========== SENDING TO STRIPE ==========")
+            logger.info(f"[Stripe] Full session_params: {session_params}")
+            logger.info(f"[Stripe] =======================================")
+
             session = stripe.checkout.Session.create(**session_params)
 
             product_ids = ','.join(str(p.pk) for p in products)

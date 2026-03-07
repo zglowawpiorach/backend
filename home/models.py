@@ -5,6 +5,7 @@ from django.core.cache import cache
 from django import forms
 from django.utils.text import slugify
 from wagtail.admin.panels import FieldPanel, MultiFieldPanel, InlinePanel
+from home.widgets import InPostSearchWidget
 from wagtail.fields import RichTextField
 from wagtail.models import Page, Orderable
 from modelcluster.fields import ParentalKey
@@ -742,3 +743,339 @@ class Coupon(models.Model):
             models.Index(fields=['code']),
             models.Index(fields=['status']),
         ]
+
+
+class PickupPoint(models.Model):
+    """
+    Pickup location for Furgonetka shipments.
+
+    Defines where packages will be collected by the courier.
+    Can be a home/business address or a parcel locker point.
+    """
+    name = models.CharField(
+        max_length=100,
+        verbose_name="Nazwa",
+        help_text="Np. 'Dom', 'Biuro', 'Paczkomat przy sklepie'"
+    )
+    street = models.CharField(
+        max_length=255,
+        verbose_name="Ulica i numer",
+        help_text="Np. 'Mickiewicza 15'"
+    )
+    postcode = models.CharField(
+        max_length=10,
+        verbose_name="Kod pocztowy",
+        help_text="Np. '00-001'"
+    )
+    city = models.CharField(
+        max_length=100,
+        verbose_name="Miasto"
+    )
+    point = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name="Kod punktu (opcjonalnie)",
+        help_text="Kod paczkomatu/punktu np. 'ADA01N' dla InPost"
+    )
+    is_default = models.BooleanField(
+        default=False,
+        verbose_name="Domyślny punkt odbioru"
+    )
+    active = models.BooleanField(
+        default=True,
+        verbose_name="Aktywny"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    panels = [
+        MultiFieldPanel([
+            FieldPanel('name'),
+            FieldPanel('active'),
+            FieldPanel('is_default'),
+        ], heading="Podstawowe"),
+        MultiFieldPanel([
+            FieldPanel('point', widget=InPostSearchWidget()),
+            FieldPanel('street'),
+            FieldPanel('postcode'),
+            FieldPanel('city'),
+        ], heading="Adres"),
+    ]
+
+    def save(self, *args, **kwargs):
+        # Ensure only one default pickup point
+        if self.is_default:
+            PickupPoint.objects.filter(is_default=True).update(is_default=False)
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get_default(cls):
+        """Get the default pickup point or None."""
+        try:
+            return cls.objects.filter(active=True, is_default=True).first()
+        except cls.DoesNotExist:
+            return None
+
+    @classmethod
+    def get_first_active(cls):
+        """Get first active pickup point or None."""
+        return cls.objects.filter(active=True).first()
+
+    def __str__(self):
+        return f"{self.name} ({self.city}, {self.street})"
+
+    class Meta:
+        ordering = ['-is_default', 'name']
+        verbose_name = "Punkt odbioru"
+        verbose_name_plural = "Punkty odbioru"
+
+
+class InPostPoint(models.Model):
+    """
+    InPost Paczkomat location synced from inpost.pl/points-pl.json
+
+    Used for customer delivery address selection.
+    """
+    # Core identification
+    name = models.CharField(
+        max_length=50,
+        unique=True,
+        db_index=True,
+        verbose_name="Kod paczkomatu",
+        help_text="Np. 'ADA01N'"
+    )
+
+    # Location details
+    street = models.CharField(
+        max_length=255,
+        verbose_name="Ulica"
+    )
+    building_number = models.CharField(
+        max_length=20,
+        verbose_name="Numer budynku"
+    )
+    postcode = models.CharField(
+        max_length=10,
+        verbose_name="Kod pocztowy"
+    )
+    city = models.CharField(
+        max_length=100,
+        db_index=True,
+        verbose_name="Miasto"
+    )
+
+    # Geographic coordinates
+    latitude = models.FloatField(verbose_name="Szerokość geograficzna")
+    longitude = models.FloatField(verbose_name="Długość geograficzna")
+
+    # Additional info
+    location_description = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Opis lokalizacji"
+    )
+    opening_hours = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Godziny otwarcia"
+    )
+
+    # Status
+    active = models.BooleanField(
+        default=True,
+        db_index=True,
+        verbose_name="Aktywny"
+    )
+
+    # Metadata
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.name} - {self.city}, {self.street}"
+
+    @property
+    def full_address(self) -> str:
+        """Return formatted address string."""
+        return f"{self.street} {self.building_number}, {self.postcode} {self.city}"
+
+    class Meta:
+        ordering = ['city', 'name']
+        verbose_name = "Paczkomat InPost"
+        verbose_name_plural = "Paczkomaty InPost"
+        indexes = [
+            models.Index(fields=['city']),
+            models.Index(fields=['active']),
+            models.Index(fields=['name']),
+        ]
+
+
+class FurgonetkaConfig(models.Model):
+    """
+    Furgonetka API configuration (singleton model).
+
+    Stores API credentials and sender details for package creation.
+    Only one instance should exist - use get_solo() to retrieve.
+    """
+    # API Configuration
+    sandbox = models.BooleanField(
+        default=True,
+        verbose_name="Tryb sandbox",
+        help_text="Używaj środowiska testowego"
+    )
+    client_id = models.CharField(
+        max_length=255,
+        verbose_name="Client ID"
+    )
+    client_secret = models.CharField(
+        max_length=255,
+        verbose_name="Client Secret"
+    )
+    username = models.CharField(
+        max_length=255,
+        verbose_name="Email / Username"
+    )
+    password = models.CharField(
+        max_length=255,
+        verbose_name="Hasło"
+    )
+
+    # Sender details (nadawca)
+    sender_name = models.CharField(
+        max_length=255,
+        verbose_name="Nazwa nadawcy"
+    )
+    sender_email = models.EmailField(
+        verbose_name="Email nadawcy"
+    )
+    sender_phone = models.CharField(
+        max_length=20,
+        verbose_name="Telefon nadawcy"
+    )
+    sender_street = models.CharField(
+        max_length=255,
+        verbose_name="Ulica nadawcy"
+    )
+    sender_city = models.CharField(
+        max_length=100,
+        verbose_name="Miasto nadawcy"
+    )
+    sender_postcode = models.CharField(
+        max_length=10,
+        verbose_name="Kod pocztowy nadawcy"
+    )
+
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @classmethod
+    def get_solo(cls):
+        """Get or create the singleton instance."""
+        obj, created = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def save(self, *args, **kwargs):
+        # Ensure only one instance exists
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        # Prevent deletion of singleton
+        pass
+
+    def __str__(self):
+        return "Konfiguracja Furgonetka"
+
+    class Meta:
+        verbose_name = "Konfiguracja Furgonetka"
+        verbose_name_plural = "Konfiguracja Furgonetka"
+
+
+class FurgonetkaService(models.Model):
+    """
+    Furgonetka service ID mapping.
+
+    Maps service names (e.g., 'inpost', 'dpd') to Furgonetka service IDs.
+    """
+    name = models.CharField(
+        max_length=50,
+        unique=True,
+        verbose_name="Nazwa usługi",
+        help_text="Np. 'inpost', 'dpd', 'poczta'"
+    )
+    service_id = models.CharField(
+        max_length=20,
+        verbose_name="Service ID",
+        help_text="ID usługi z Furgonetka (np. '11361412')"
+    )
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Opis"
+    )
+    active = models.BooleanField(
+        default=True,
+        verbose_name="Aktywna"
+    )
+
+    def __str__(self):
+        return f"{self.name} ({self.service_id})"
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = "Usługa Furgonetka"
+        verbose_name_plural = "Usługi Furgonetka"
+
+
+class BrevoConfig(models.Model):
+    """
+    Brevo (Sendinblue) email configuration (singleton model).
+
+    Stores API key and email template settings.
+    Only one instance should exist - use get_solo() to retrieve.
+    """
+    api_key = models.CharField(
+        max_length=255,
+        verbose_name="API Key"
+    )
+    sender_email = models.EmailField(
+        verbose_name="Email nadawcy"
+    )
+    sender_name = models.CharField(
+        max_length=255,
+        verbose_name="Nazwa nadawcy"
+    )
+    thank_you_template_id = models.IntegerField(
+        verbose_name="ID szablonu 'Dziękujemy'",
+        help_text="ID szablonu email po zakupie"
+    )
+    shipping_template_id = models.IntegerField(
+        verbose_name="ID szablonu 'Wysyłka'",
+        help_text="ID szablonu email przy wysyłce"
+    )
+
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @classmethod
+    def get_solo(cls):
+        """Get or create the singleton instance."""
+        obj, created = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def save(self, *args, **kwargs):
+        # Ensure only one instance exists
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        # Prevent deletion of singleton
+        pass
+
+    def __str__(self):
+        return "Konfiguracja Brevo"
+
+    class Meta:
+        verbose_name = "Konfiguracja Brevo"
+        verbose_name_plural = "Konfiguracja Brevo"

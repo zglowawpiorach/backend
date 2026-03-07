@@ -9,6 +9,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
+from django.db import models
 
 from django.utils import timezone
 
@@ -193,8 +194,15 @@ def reserve_basket(request):
         "product_ids": [1, 5, 9],
         "success_url": "https://example.com/success",
         "cancel_url": "https://example.com/shop",
-        "customer_email": "optional@example.com"
+        "customer_email": "optional@example.com",
+        "coupon_code": "SUMMER20",
+        "furgonetka_service_id": "inpost",
+        "furgonetka_locker_id": "ADA01N"
     }
+
+    Furgonetka shipping options:
+    - furgonetka_service_id: Shipping carrier (inpost, inpostkurier, dpd, ups, gls, fedex, dhl, poczta, orlen)
+    - furgonetka_locker_id: Locker ID for InPost paczkomat (e.g., "ADA01N")
 
     Response (success):
     {
@@ -216,6 +224,13 @@ def reserve_basket(request):
     - 400: Invalid request data
     - 500: Server error
     """
+    # Log ALL incoming request data
+    logger.info(f"[Reserve] ========== INCOMING REQUEST ==========")
+    logger.info(f"[Reserve] Full request.data: {request.data}")
+    logger.info(f"[Reserve] Full request.query_params: {request.query_params}")
+    logger.info(f"[Reserve] Headers: {dict(request.headers)}")
+    logger.info(f"[Reserve] ======================================")
+
     serializer = ReserveBasketRequestSerializer(data=request.data)
 
     if not serializer.is_valid():
@@ -240,6 +255,11 @@ def reserve_basket(request):
         except Coupon.DoesNotExist:
             pass  # Ignore non-existent coupons
 
+    # Get Furgonetka shipping options from request
+    furgonetka_service_id = request.data.get('furgonetka_service_id')
+    furgonetka_locker_id = request.data.get('furgonetka_locker_id')
+    logger.info(f"[Reserve] Furgonetka params: service_id={furgonetka_service_id}, locker_id={furgonetka_locker_id}")
+
     # Validate product IDs exist
     products = list(Product.objects.filter(pk__in=product_ids))
 
@@ -262,6 +282,8 @@ def reserve_basket(request):
         cancel_url=cancel_url,
         customer_email=customer_email,
         coupon=coupon,
+        furgonetka_service_id=furgonetka_service_id,
+        furgonetka_locker_id=furgonetka_locker_id,
     )
 
     if not stripe_result['success']:
@@ -476,3 +498,101 @@ def validate_coupon(request):
         response_data['message'] = f'{coupon.amount_off:.2f} PLN zniżki zastosowane'
 
     return Response(response_data, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def search_inpost_points(request):
+    """
+    Search InPost Paczkomat locations.
+
+    GET /api/v1/inpost-points/?q=warszawa
+    GET /api/v1/inpost-points/?postcode=00-001
+    GET /api/v1/inpost-points/?city=Warszawa
+
+    Returns:
+        List of matching InPost points with:
+        - name: Point code (e.g., "ADA01N")
+        - full_address: Formatted address
+        - city: City name
+        - postcode: Postal code
+        - latitude/longitude: GPS coordinates
+    """
+    from home.models import InPostPoint
+
+    queryset = InPostPoint.objects.filter(active=True)
+
+    # Search by query (searches name, city, street)
+    q = request.query_params.get('q', '').strip()
+    if q:
+        queryset = queryset.filter(
+            models.Q(name__icontains=q) |
+            models.Q(city__icontains=q) |
+            models.Q(street__icontains=q)
+        )
+
+    # Filter by city
+    city = request.query_params.get('city', '').strip()
+    if city:
+        queryset = queryset.filter(city__icontains=city)
+
+    # Filter by postcode prefix
+    postcode = request.query_params.get('postcode', '').strip()
+    if postcode:
+        queryset = queryset.filter(postcode__startswith=postcode)
+
+    # Limit results
+    queryset = queryset[:50]
+
+    results = [
+        {
+            'name': point.name,
+            'street': point.street,
+            'building_number': point.building_number,
+            'postcode': point.postcode,
+            'city': point.city,
+            'full_address': point.full_address,
+            'latitude': point.latitude,
+            'longitude': point.longitude,
+            'location_description': point.location_description,
+            'opening_hours': point.opening_hours,
+        }
+        for point in queryset
+    ]
+
+    return Response(results, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_inpost_point(request, name):
+    """
+    Get single InPost Paczkomat by name/code.
+
+    GET /api/v1/inpost-points/ADA01N/
+
+    Returns:
+        Single point details or 404 if not found.
+    """
+    from home.models import InPostPoint
+
+    try:
+        point = InPostPoint.objects.get(name=name, active=True)
+    except InPostPoint.DoesNotExist:
+        return Response(
+            {'error': 'Paczkomat nie znaleziony'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    return Response({
+        'name': point.name,
+        'street': point.street,
+        'building_number': point.building_number,
+        'postcode': point.postcode,
+        'city': point.city,
+        'full_address': point.full_address,
+        'latitude': point.latitude,
+        'longitude': point.longitude,
+        'location_description': point.location_description,
+        'opening_hours': point.opening_hours,
+    }, status=status.HTTP_200_OK)

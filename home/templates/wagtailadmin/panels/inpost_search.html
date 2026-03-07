@@ -1,0 +1,165 @@
+{% load wagtailadmin_tags %}
+<div class="w-field" data-controller="inpost-search">
+    <label class="w-field__label" for="{{ field.id_for_label }}">
+        {{ field.label }}
+        {% if field.field.required %}<span class="w-required-mark">*</span>{% endif %}
+    </label>
+
+    <div class="inpost-search-wrapper">
+        <input type="text"
+               id="{{ field.id_for_label }}"
+               name="{{ field.html_name }}"
+               value="{{ field.value|default:'' }}"
+               placeholder="Wpisz kod paczkomatu lub miasto (min. 2 znaki)..."
+               class="w-field__input"
+               data-inpost-search-target="input"
+               autocomplete="off">
+
+        <div class="inpost-search-results" data-inpost-search-target="results" style="display: none;">
+            <!-- Results will be populated by JS -->
+        </div>
+    </div>
+
+    {% if field.help_text %}
+    <p class="w-field__help">{{ field.help_text }}</p>
+    {% endif %}
+
+    {% for error in field.errors %}
+    <p class="w-field__error">{{ error }}</p>
+    {% endfor %}
+</div>
+
+<style>
+.inpost-search-wrapper {
+    position: relative;
+}
+.inpost-search-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-top: none;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.inpost-search-result {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+}
+.inpost-search-result:hover {
+    background: #f5f5f5;
+}
+.inpost-search-result:last-child {
+    border-bottom: none;
+}
+.inpost-search-result__name {
+    font-weight: bold;
+    color: #0066cc;
+}
+.inpost-search-result__address {
+    font-size: 0.9em;
+    color: #666;
+}
+</style>
+
+<script>
+(function() {
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    document.querySelectorAll('[data-controller="inpost-search"]').forEach(container => {
+        const input = container.querySelector('[data-inpost-search-target="input"]');
+        const resultsDiv = container.querySelector('[data-inpost-search-target="results"]');
+
+        if (!input || !resultsDiv) return;
+
+        let timeout = null;
+
+        input.addEventListener('input', function() {
+            const query = this.value.trim();
+
+            clearTimeout(timeout);
+
+            if (query.length < 2) {
+                resultsDiv.style.display = 'none';
+                resultsDiv.innerHTML = '';
+                return;
+            }
+
+            timeout = setTimeout(() => {
+                fetch(`/admin/inpost-search/?q=${encodeURIComponent(query)}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        resultsDiv.innerHTML = '';
+
+                        if (data.length === 0) {
+                            const noResult = document.createElement('div');
+                            noResult.className = 'inpost-search-result';
+                            noResult.textContent = 'Brak wyników';
+                            resultsDiv.appendChild(noResult);
+                            resultsDiv.style.display = 'block';
+                            return;
+                        }
+
+                        data.forEach(p => {
+                            const result = document.createElement('div');
+                            result.className = 'inpost-search-result';
+                            result.dataset.street = `${p.street} ${p.building_number}`;
+                            result.dataset.postcode = p.postcode;
+                            result.dataset.city = p.city;
+                            result.dataset.point = p.name;
+
+                            const nameDiv = document.createElement('div');
+                            nameDiv.className = 'inpost-search-result__name';
+                            nameDiv.textContent = p.name;
+
+                            const addressDiv = document.createElement('div');
+                            addressDiv.className = 'inpost-search-result__address';
+                            addressDiv.textContent = p.full_address;
+
+                            result.appendChild(nameDiv);
+                            result.appendChild(addressDiv);
+                            resultsDiv.appendChild(result);
+                        });
+
+                        resultsDiv.style.display = 'block';
+                    })
+                    .catch(err => {
+                        console.error('InPost search error:', err);
+                        resultsDiv.style.display = 'none';
+                    });
+            }, 300);
+        });
+
+        resultsDiv.addEventListener('click', function(e) {
+            const result = e.target.closest('.inpost-search-result');
+            if (!result || !result.dataset.point) return;
+
+            const streetInput = document.querySelector('input[name="street"]');
+            const postcodeInput = document.querySelector('input[name="postcode"]');
+            const cityInput = document.querySelector('input[name="city"]');
+
+            if (streetInput) streetInput.value = result.dataset.street;
+            if (postcodeInput) postcodeInput.value = result.dataset.postcode;
+            if (cityInput) cityInput.value = result.dataset.city;
+            input.value = result.dataset.point;
+
+            resultsDiv.style.display = 'none';
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!container.contains(e.target)) {
+                resultsDiv.style.display = 'none';
+            }
+        });
+    });
+})();
+</script>

@@ -12,7 +12,14 @@ from home.api.views import (
     reserve_basket,
     cancel_checkout,
     cleanup_expired_reservations,
-    validate_coupon
+    validate_coupon,
+    search_inpost_points,
+    get_inpost_point
+)
+from home.api.furgonetka_views import (
+    orders,
+    order_tracking_number,
+    order_payments
 )
 
 # Create router for ViewSet
@@ -29,4 +36,13 @@ urlpatterns = [
     path('cancel-checkout/', cancel_checkout, name='cancel_checkout'),
     path('cleanup-expired-reservations/', cleanup_expired_reservations, name='cleanup_expired_reservations'),
     path('validate-coupon/', validate_coupon, name='validate_coupon'),
+
+    # InPost Paczkomat search
+    path('inpost-points/', search_inpost_points, name='search_inpost_points'),
+    path('inpost-points/<str:name>/', get_inpost_point, name='get_inpost_point'),
+
+    # Furgonetka integration endpoints (called BY Furgonetka)
+    path('orders', orders, name='furgonetka_orders'),
+    path('orders/<str:source_order_id>/tracking_number', order_tracking_number, name='furgonetka_tracking'),
+    path('orders/<str:source_order_id>/payments', order_payments, name='furgonetka_payments'),
 ]
