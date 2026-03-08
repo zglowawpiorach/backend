@@ -14,7 +14,8 @@ from home.api.views import (
     cleanup_expired_reservations,
     validate_coupon,
     search_inpost_points,
-    get_inpost_point
+    get_inpost_point,
+    subscribe_to_newsletter,
 )
 from home.api.furgonetka_views import (
     orders,
@@ -40,6 +41,9 @@ urlpatterns = [
     # InPost Paczkomat search
     path('inpost-points/', search_inpost_points, name='search_inpost_points'),
     path('inpost-points/<str:name>/', get_inpost_point, name='get_inpost_point'),
+
+    # Newsletter subscription
+    path('newsletter/subscribe/', subscribe_to_newsletter, name='subscribe_to_newsletter'),
 
     # Furgonetka integration endpoints (called BY Furgonetka)
     path('orders', orders, name='furgonetka_orders'),

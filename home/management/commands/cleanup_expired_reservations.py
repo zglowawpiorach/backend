@@ -48,7 +48,7 @@ class Command(BaseCommand):
         # Cancel each expired reservation using the service
         cancelled = 0
         for reservation in expired_reservations:
-            from home.reservation import ReservationService
+            from home.services import ReservationService
             result = ReservationService.cancel_reservation(reservation.stripe_session_id)
             if result['success']:
                 cancelled += 1

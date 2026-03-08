@@ -1,3 +1,14 @@
+"""
+Furgonetka shipping service integration.
+
+Furgonetka API documentation: https://furgonetka.pl/api
+
+This service handles:
+1. Authentication with OAuth2
+2. Searching for delivery points (paczkomats, service points)
+3. Creating shipping packages
+"""
+
 import base64
 import logging
 import requests

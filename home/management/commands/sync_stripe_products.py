@@ -9,7 +9,7 @@ from django.core.management.base import BaseCommand
 from django.conf import settings
 
 from home.models import Product, ProductStatus
-from home.stripe_sync import StripeSync
+from home.services import StripeSync
 
 
 class Command(BaseCommand):

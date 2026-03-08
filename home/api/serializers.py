@@ -193,3 +193,16 @@ class ReserveBasketResponseSerializer(serializers.Serializer):
     expires_at = serializers.DateTimeField(required=False, allow_null=True)
     unavailable_products = UnavailableProductSerializer(many=True, required=False)
     error = serializers.CharField(required=False, allow_null=True)
+
+
+class NewsletterSubscribeSerializer(serializers.Serializer):
+    """Serializer for newsletter subscription requests."""
+    email = serializers.EmailField(required=True)
+    name = serializers.CharField(required=False, allow_null=True, max_length=255)
+
+
+class NewsletterSubscribeResponseSerializer(serializers.Serializer):
+    """Serializer for newsletter subscription response."""
+    success = serializers.BooleanField()
+    contact_id = serializers.CharField(required=False, allow_null=True)
+    error = serializers.CharField(required=False, allow_null=True)

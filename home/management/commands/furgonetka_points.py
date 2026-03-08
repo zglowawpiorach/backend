@@ -8,7 +8,7 @@ Usage:
 """
 
 from django.core.management.base import BaseCommand
-from home.furgonetka import FurgonetkaService
+from home.services import FurgonetkaService
 
 
 class Command(BaseCommand):

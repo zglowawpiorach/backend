@@ -6,9 +6,11 @@ as well as creating checkout sessions.
 """
 
 import logging
+import re
 from typing import Optional, List
 from datetime import datetime
 from django.conf import settings
+from django.utils.html import strip_tags
 import stripe
 
 # Configure Stripe to use certifi's CA bundle for TLS connections
@@ -25,6 +27,28 @@ logger = logging.getLogger(__name__)
 # Shipping cost in grosze (20 PLN = 2000 grosze)
 SHIPPING_COST_GROSZE = 2000
 SHIPPING_CURRENCY = "pln"
+
+
+def _strip_html(text: str) -> str:
+    """
+    Strip HTML tags and clean up whitespace from text.
+
+    Args:
+        text: HTML text to strip
+
+    Returns:
+        Plain text with HTML tags removed and whitespace normalized
+    """
+    if not text:
+        return ""
+
+    # Strip HTML tags
+    plain = strip_tags(text)
+
+    # Normalize whitespace (remove extra spaces, newlines)
+    plain = re.sub(r'\s+', ' ', plain).strip()
+
+    return plain
 
 
 class StripeSync:
@@ -127,7 +151,8 @@ class StripeSync:
             stripe.api_key = api_key
 
             product_name = product.tytul if product.tytul else product.name
-            product_description = product.opis if product.opis else None
+            # Strip HTML from description for Stripe (plain text only)
+            product_description = _strip_html(product.opis) if product.opis else None
 
             # Build metadata for Stripe product
             metadata = {
@@ -402,12 +427,15 @@ class StripeSync:
                 }
             ]
 
-            # Add customer email if provided
+            # Always enable payment_intent_data for receipt_email
+            # If customer_email is provided, use it; otherwise Stripe will use collected email
+            session_params['payment_intent_data'] = {
+                'receipt_email': customer_email,  # Can be None - Stripe will use collected email
+            }
+
+            # Pre-fill customer email if provided
             if customer_email:
                 session_params['customer_email'] = customer_email
-                session_params['payment_intent_data'] = {
-                    'receipt_email': customer_email,
-                }
 
             # Create the checkout session
             logger.info(f"[Stripe] ========== SENDING TO STRIPE (single product) ==========")
@@ -552,12 +580,15 @@ class StripeSync:
             # Collect phone number (required for shipping)
             session_params['phone_number_collection'] = {'enabled': True}
 
+            # Always enable payment_intent_data for receipt_email
+            # If customer_email is provided, use it; otherwise Stripe will use collected email
+            session_params['payment_intent_data'] = {
+                'receipt_email': customer_email,  # Can be None - Stripe will use collected email
+            }
+
             # Pre-fill customer email if provided
             if customer_email:
                 session_params['customer_email'] = customer_email
-                session_params['payment_intent_data'] = {
-                    'receipt_email': customer_email,
-                }
 
             # Create the checkout session
             logger.info(f"[Stripe] ========== SENDING TO STRIPE ==========")

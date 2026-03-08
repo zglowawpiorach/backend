@@ -12,7 +12,26 @@
       "Bash(DJANGO_SETTINGS_MODULE=core.settings.dev python -c \"import django; django.setup\\(\\); from django.urls import reverse; print\\(''URL config OK''\\)\")",
       "Bash(DJANGO_SETTINGS_MODULE=core.settings.dev python -c \"import django; django.setup\\(\\); from home.api.views import reserve_basket; print\\(''Import successful''\\)\")",
       "Bash(DJANGO_SETTINGS_MODULE=core.settings.dev python -c \":*)",
-      "Bash(FURGONETKA_SANDBOX=true DJANGO_SETTINGS_MODULE=core.settings.dev python -c \":*)"
+      "Bash(FURGONETKA_SANDBOX=true DJANGO_SETTINGS_MODULE=core.settings.dev python -c \":*)",
+      "Bash(python manage.py makemigrations home --name add_pickup_point)",
+      "Bash(python manage.py migrate home)",
+      "Bash(python manage.py makemigrations home --name add_inpost_points)",
+      "Bash(python manage.py check)",
+      "Bash(python manage.py sync_inpost_points)",
+      "Bash(curl -s \"https://inpost.pl/sites/default/files/points-pl.json\")",
+      "Bash(python3 -c \"import sys, json; d=json.load\\(sys.stdin\\); print\\(type\\(d\\)\\); print\\(list\\(d.keys\\(\\)\\)[:10] if isinstance\\(d, dict\\) else ''is list''\\)\")",
+      "Bash(python3 -c \"import sys, json; d=json.load\\(sys.stdin\\); print\\(f''Total: {d.get\\(\"\"total\"\"\\)}''\\); items=d.get\\(''items'',[]\\); print\\(f''Items: {len\\(items\\)}''\\); print\\(''Sample:'', items[0] if items else ''empty''\\)\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:8000/admin/inpost-search/?q=warszawa\")",
+      "Bash(python -c \"from django.conf import settings; from pathlib import Path; print\\(''PROJECT_DIR:'', settings.PROJECT_DIR\\); print\\(''Templates dir:'', settings.PROJECT_DIR / ''templates''\\); print\\(''Exists:'', \\(settings.PROJECT_DIR / ''templates/wagtailadmin/panels/inpost_search.html''\\).exists\\(\\)\\)\")",
+      "Bash(python manage.py shell -c \"from django.conf import settings; print\\(''Templates DIRS:'', settings.TEMPLATES[0][''DIRS'']\\)\")",
+      "Bash(python manage.py shell -c \":*)",
+      "Bash(python manage.py sync_stripe_products)",
+      "Bash(python manage.py makemigrations)",
+      "Bash(python manage.py migrate --no-input)",
+      "Bash(python manage.py makemigrations --check)",
+      "Bash(python manage.py makemigrations home --name add_transaction_model)",
+      "Bash(python manage.py makemigrations --name add_newsletter_list_id)",
+      "Bash(python manage.py cleanup_expired_reservations)"
     ]
   }
 }

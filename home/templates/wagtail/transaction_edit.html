@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Transakcja - Z Głową w Piórach</title>
+        </head>
+    <body style="margin:0;padding:24px;">
+            <div class="container" style="margin-top: 20px;">
+                <h1 style="color: #333; margin-bottom: 10px;">Transakcja #{{ transaction.id }}</h1>
+
+                <div class="info-box" style="background: #f5f5f5; padding: 15px; border-radius: 4px; margin-bottom: 10px;">
+                    <p><strong>Status:</strong> {{ transaction.get_status_display }}</p>
+                    <p><strong>Utworzzona:</strong> {{ transaction.created_at|date: "d.m.Y H:i,D.m.Y" }}</p>
+                    <p><strong>Tracking:</strong> {{ transaction.tracking_number|default:"—" }}</p>
+                    <p><strong>Kwota:</strong> {{ transaction.total_amount }} zł</p>
+                    <p><strong>Dostawa:</strong> {{ transaction.shipping_method }}</p>
+                    <p><strong>Adres:</strong> {{ transaction.shipping_address }}</p>
+                </div>
+
+                {% if transaction.is_sent %}
+                    <div class="sent-box" style="background: #e8f5e8; padding: 15px; border-radius: 8px; text-align: center;">
+                        <p class="sent-label">Poczta wysłana!</p>
+                    <form action="POST" method="post">
+                        <input type="hidden" name="tracking_number" value="{{ transaction.tracking_number }}">
+                        <input type="hidden" name="carrier" value="{{ transaction.carrier }}">
+                        <button type="submit" class="btn-primary" style="margin-top: 10px;">Oznacz jako wysłana</button>
+                </div>
+            </form>
+        {% endif %}
+    </div>
+
+    <script>
+        document.getElementById('statusForm').addEventListener('change', function() {
+            var sentBox = document.getElementById('sentBox');
+            var markSentBtn = document.getElementById('markSentBtn')
+
+            if (sentBox.style.display !== 'none') {
+                sentBox.style.display = 'block'
+            } else {
+                markSentBtn.style.display = 'none'
+            }
+        });
+
+        document.getElementById('trackingNumber').addEventListener('input', function() {
+            var trackingNumber = this.value.trim()
+            if (!trackingNumber) {
+                alert('Podaj numer śledzenia');
+                return;
+            }
+            document.getElementById('carrier').addEventListener('change', function() {
+                var carrier = this.value.trim()
+                // Update tracking info
+                var trackingInput = document.getElementById('trackingNumber')
+                var carrierInput = document.getElementById('carrier')
+
+                // Only allow marking as sent if tracking number is provided
+                if (trackingNumber && carrierInput.value) {
+                    document.getElementById('trackingInfo').textContent = 'Numer śledzenia: ' + trackingNumber + ' (' + carrier + ')';
+                }
+            }
+        });
+    </script>
+</body>
+</html>

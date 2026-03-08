@@ -25,7 +25,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from home.models import Product
-from home.brevo import BrevoService
+from home.services import BrevoService
 
 logger = logging.getLogger(__name__)
 
@@ -476,6 +476,13 @@ def order_tracking_number(request, source_order_id: str):
 
             if customer_email:
                 brevo = BrevoService()
+
+                logger.info(
+                    f"[Brevo] Sending tracking email via Furgonetka webhook: "
+                    f"email={customer_email}, order={source_order_id}, "
+                    f"tracking={tracking_number}, carrier={carrier}"
+                )
+
                 email_result = brevo.send_tracking_email(
                     email=customer_email,
                     tracking_number=tracking_number,
@@ -486,6 +493,7 @@ def order_tracking_number(request, source_order_id: str):
 
                 if email_result.get("success"):
                     logger.info(f"[Brevo] Tracking email sent to {customer_email}")
+                    logger.debug(f"[Brevo] Tracking email result: {email_result}")
                 else:
                     logger.error(
                         f"[Brevo] Failed to send tracking email: "
