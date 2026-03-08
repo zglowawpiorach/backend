@@ -16,20 +16,21 @@ from home.api.serializers import NewsletterSubscribeSerializer
 logger = logging.getLogger(__name__)
 
 
-@api_view(['POST'])
+@api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 @csrf_exempt
 def subscribe_to_newsletter(request):
     """
     Subscribe a contact to the Brevo newsletter list.
 
+    GET /api/v1/newsletter/subscribe/?email=customer@example.com&name=Jan%20Kowalski
     POST /api/v1/newsletter/subscribe/
 
-    Request body:
-    {
-        "email": "customer@example.com",
-        "name": "Jan Kowalski"  // Optional
-    }
+    Supports both query parameters (for email links) and request body (for API calls).
+
+    Query params (GET) or Request body (POST):
+    - email: Customer email address (required)
+    - name: Customer name (optional)
 
     Response:
     {
@@ -43,7 +44,16 @@ def subscribe_to_newsletter(request):
         "error": "Newsletter list not configured"
     }
     """
-    serializer = NewsletterSubscribeSerializer(data=request.data)
+    # Accept data from query params (GET) or request body (POST)
+    if request.method == 'GET':
+        data = {
+            'email': request.query_params.get('email'),
+            'name': request.query_params.get('name'),
+        }
+    else:
+        data = request.data
+
+    serializer = NewsletterSubscribeSerializer(data=data)
 
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
