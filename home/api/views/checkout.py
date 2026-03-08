@@ -159,12 +159,17 @@ def reserve_basket(request):
         "customer_email": "optional@example.com",
         "coupon_code": "SUMMER20",
         "furgonetka_service_id": "inpost",
-        "furgonetka_locker_id": "ADA01N"
+        "furgonetka_locker_id": "ADA01N",
+        "invoice_creation": true
     }
 
     Furgonetka shipping options:
     - furgonetka_service_id: Shipping carrier (inpost, inpostkurier, dpd, ups, gls, fedex, dhl, poczta, orlen)
     - furgonetka_locker_id: Locker ID for InPost paczkomat (e.g., "ADA01N")
+
+    Invoice creation:
+    - invoice_creation: If true, enables invoice generation, tax ID collection,
+                        and business name collection in Stripe checkout
 
     Response (success):
     {
@@ -205,6 +210,9 @@ def reserve_basket(request):
     success_url = serializer.validated_data['success_url']
     cancel_url = serializer.validated_data['cancel_url']
     customer_email = serializer.validated_data.get('customer_email')
+    furgonetka_service_id = serializer.validated_data.get('furgonetka_service_id')
+    furgonetka_locker_id = serializer.validated_data.get('furgonetka_locker_id')
+    invoice_creation = serializer.validated_data.get('invoice_creation', False)
 
     # Get coupon from request
     coupon_code = request.data.get('coupon_code')
@@ -217,10 +225,8 @@ def reserve_basket(request):
         except Coupon.DoesNotExist:
             pass  # Ignore non-existent coupons
 
-    # Get Furgonetka shipping options from request
-    furgonetka_service_id = request.data.get('furgonetka_service_id')
-    furgonetka_locker_id = request.data.get('furgonetka_locker_id')
     logger.info(f"[Reserve] Furgonetka params: service_id={furgonetka_service_id}, locker_id={furgonetka_locker_id}")
+    logger.info(f"[Reserve] Invoice creation: {invoice_creation}")
 
     # Validate product IDs exist
     products = list(Product.objects.filter(pk__in=product_ids))
@@ -246,6 +252,7 @@ def reserve_basket(request):
         coupon=coupon,
         furgonetka_service_id=furgonetka_service_id,
         furgonetka_locker_id=furgonetka_locker_id,
+        invoice_creation=invoice_creation,
     )
 
     if not stripe_result['success']:

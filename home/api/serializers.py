@@ -170,6 +170,9 @@ class ReserveBasketRequestSerializer(serializers.Serializer):
     success_url = serializers.URLField(required=True)
     cancel_url = serializers.URLField(required=True)
     customer_email = serializers.EmailField(required=False, allow_null=True)
+    furgonetka_service_id = serializers.CharField(required=False, allow_null=True)
+    furgonetka_locker_id = serializers.CharField(required=False, allow_null=True)
+    invoice_creation = serializers.BooleanField(required=False, default=False)
 
 
 class UnavailableProductSerializer(serializers.Serializer):

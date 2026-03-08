@@ -469,6 +469,7 @@ class StripeSync:
         coupon = None,
         furgonetka_service_id: Optional[str] = None,
         furgonetka_locker_id: Optional[str] = None,
+        invoice_creation: bool = False,
     ) -> dict:
         """
         Create a Stripe Checkout Session for multiple products (basket).
@@ -484,6 +485,8 @@ class StripeSync:
             coupon: Optional Coupon instance to apply discount
             furgonetka_service_id: Furgonetka shipping service ID (e.g., 'inpost', 'dpd')
             furgonetka_locker_id: InPost locker ID if shipping to paczkomat
+            invoice_creation: If True, enable invoice creation, tax ID collection,
+                              and business name collection
 
         Returns:
             Dict with 'success' (bool), 'checkout_url' (str), 'session_id' (str),
@@ -535,7 +538,7 @@ class StripeSync:
                     })
 
             # Build session params
-            logger.info(f"[Stripe] Creating basket session with furgonetka_service_id={furgonetka_service_id}, furgonetka_locker_id={furgonetka_locker_id}")
+            logger.info(f"[Stripe] Creating basket session with furgonetka_service_id={furgonetka_service_id}, furgonetka_locker_id={furgonetka_locker_id}, invoice_creation={invoice_creation}")
             session_params = {
                 'mode': 'payment',
                 'line_items': line_items,
@@ -547,10 +550,19 @@ class StripeSync:
                     'furgonetka_service_id': furgonetka_service_id or '',
                     'furgonetka_locker_id': furgonetka_locker_id or '',
                 },
-                'invoice_creation': {'enabled': True},
                 'billing_address_collection': 'required',
                 'shipping_address_collection': {'allowed_countries': ['PL']},
             }
+
+            # Add invoice-related options if requested
+            if invoice_creation:
+                session_params['invoice_creation'] = {'enabled': True}
+                session_params['tax_id_collection'] = {'enabled': True}
+                session_params['customer_update'] = {
+                    'name': 'auto',
+                    'address': 'auto',
+                }
+                logger.info("[Stripe] Invoice creation enabled with tax ID and name collection")
 
             # Apply coupon if provided and valid
             if coupon and coupon.is_valid and coupon.stripe_promotion_code_id:
