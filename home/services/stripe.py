@@ -558,11 +558,7 @@ class StripeSync:
             if invoice_creation:
                 session_params['invoice_creation'] = {'enabled': True}
                 session_params['tax_id_collection'] = {'enabled': True}
-                session_params['customer_update'] = {
-                    'name': 'auto',
-                    'address': 'auto',
-                }
-                logger.info("[Stripe] Invoice creation enabled with tax ID and name collection")
+                logger.info("[Stripe] Invoice creation enabled with tax ID collection")
 
             # Apply coupon if provided and valid
             if coupon and coupon.is_valid and coupon.stripe_promotion_code_id:
