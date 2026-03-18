@@ -14,6 +14,9 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 BASE_DIR = PROJECT_DIR.parent
@@ -298,6 +301,23 @@ STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
 # Furgonetka webhook token (for Furgonetka to call our API)
 # Main config is now in database: home.FurgonetkaConfig and home.FurgonetkaService
 FURGONETKA_API_TOKEN = os.environ.get('FURGONETKA_API_TOKEN', '')
+
+# Sentry error tracking
+SENTRY_DSN = os.environ.get('SENTRY_DSN', '')
+
+# Initialize Sentry if DSN is configured
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[DjangoIntegration()],
+        # Set traces_sample_rate to 1.0 to capture 100%
+        # of transactions for tracing.
+        traces_sample_rate=1.0,
+        # Set profiles_sample_rate to 1.0 to profile 100%
+        # of sampled transactions.
+        profiles_sample_rate=1.0,
+        send_default_pii=True,
+    )
 
 # REST Framework configuration
 REST_FRAMEWORK = {
