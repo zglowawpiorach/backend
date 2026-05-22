@@ -29,6 +29,22 @@ class FurgonetkaService:
         # Load configuration from database
         self.config = FurgonetkaConfig.get_solo()
 
+        # Validate config fields
+        missing = []
+        if not self.config.client_id:
+            missing.append("client_id")
+        if not self.config.client_secret:
+            missing.append("client_secret")
+        if not self.config.username:
+            missing.append("username")
+        if not self.config.password:
+            missing.append("password")
+        if missing:
+            raise ValueError(
+                f"FurgonetkaConfig brakuje pol: {', '.join(missing)}. "
+                f"Uzupelnij w adminie."
+            )
+
         use_sandbox = self.config.sandbox
         self.BASE_URL = self.SANDBOX_URL if use_sandbox else self.PRODUCTION_URL
         logger.info(f"[Furgonetka] Initialized with BASE_URL={self.BASE_URL}, sandbox={use_sandbox}")
@@ -51,6 +67,8 @@ class FurgonetkaService:
     def _login(self) -> str:
         url = f"{self.BASE_URL}/oauth/token"
         logger.info(f"[Furgonetka] Login request to: {url}")
+        logger.info(f"[Furgonetka] Config: client_id={'set' if self.config.client_id else 'EMPTY'}, username={'set' if self.config.username else 'EMPTY'}, sandbox={self.config.sandbox}")
+
         r = requests.post(
             url,
             headers={"Authorization": f"Basic {self._basic_auth()}"},
@@ -61,6 +79,12 @@ class FurgonetkaService:
                 "password": self.config.password,
             },
         )
+
+        if not r.ok:
+            logger.error(f"[Furgonetka] Login failed: status={r.status_code}, body={r.text[:1000]}")
+            logger.error(f"[Furgonetka] Request headers: Authorization=Basic [hidden], Content-Type=application/x-www-form-urlencoded")
+            logger.error(f"[Furgonetka] Request body: grant_type=password, scope=api, username={self.config.username}, password=[hidden]")
+
         r.raise_for_status()
         data = r.json()
         cache.set("furgonetka_token", data["access_token"], 29 * 86400)
