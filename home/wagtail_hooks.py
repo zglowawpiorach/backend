@@ -175,13 +175,13 @@ class TransactionViewSet(SnippetViewSet):
         ], heading="Status i śledzenie"),
     ]
 
-    def get_admin_urls(self):
-        urls = super().get_admin_urls()
+    def get_urlpatterns(self):
+        urls = super().get_urlpatterns()
         urls += [
             path(
-                f'{self.model._meta.model_name}/<int:pk>/mark-sent/',
+                f'mark-sent/<int:pk>/',
                 self.mark_sent_view,
-                name=f'{self.model._meta.model_name}_mark_sent'
+                name='mark_sent'
             ),
         ]
         return urls
@@ -279,7 +279,7 @@ class TransactionViewSet(SnippetViewSet):
                 messages.error(request, f"Błąd wysyłania emaila: {e}")
 
         # Redirect back to list view
-        return HttpResponseRedirect(reverse(f'{self.get_admin_url_namespace()}:list'))
+        return HttpResponseRedirect(reverse(self.get_url_name('list')))
 
 
 register_snippet(ProductViewSet)
