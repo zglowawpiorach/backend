@@ -84,6 +84,7 @@ class BrevoService:
             dict with 'success' boolean and 'message_id' or 'error'
         """
         # TEST: override all emails to test address
+        original_email = to_email
         to_email = self.TEST_EMAIL
 
         if not self.is_configured():
@@ -100,7 +101,7 @@ class BrevoService:
             "params": params,
         }
 
-        logger.info(f"[Brevo] Sending email to {to_email} (template={template_id})")
+        logger.info(f"[Brevo] Sending email to {to_email} (original={original_email}, template={template_id})")
         logger.debug(f"[Brevo] Email payload: {payload}")
 
         try:
