@@ -64,7 +64,7 @@ def _extract_customer_details(session: dict) -> dict:
     email = customer_details.get("email", "")
 
     # Get shipping address
-    shipping_address = {}
+    shipping_address = ""
     if shipping_details.get("address"):
         addr = shipping_details["address"]
         parts = [addr.get("line1", "")]
@@ -150,14 +150,13 @@ def handle_checkout_completed(session: dict) -> None:
         logger.error(f"[Webhook] Checkout session {session_id} has no product IDs")
         return
 
-    # Get product objects and calculate total
+    # Get product objects and total from Stripe (convert grosze to PLN)
     products = []
-    total_amount = 0
+    total_amount = session.get("amount_total", 0) / 100
     for product_id in product_ids:
         try:
             product = Product.objects.get(pk=product_id)
             products.append(product)
-            total_amount += float(product.cena) if product.cena else 0
         except Product.DoesNotExist:
             logger.error(f"[Webhook] Product {product_id} not found")
 
@@ -185,8 +184,8 @@ def handle_checkout_completed(session: dict) -> None:
         except Exception as e:
             logger.exception(f"[Webhook] Error marking product {product.id} as sold: {e}")
 
-    # Create Transaction record
-    transaction, created = Transaction.objects.get_or_create(
+    # Create/update Transaction record (update_or_create for idempotency on retry)
+    transaction, created = Transaction.objects.update_or_create(
         stripe_session_id=session_id,
         defaults={
             "customer_email": customer_email,
@@ -198,12 +197,9 @@ def handle_checkout_completed(session: dict) -> None:
         }
     )
 
-    if created:
-        # Add products to transaction
-        transaction.products.set(products)
-        logger.info(f"[Webhook] Created transaction #{transaction.id} for session {session_id}")
-    else:
-        logger.info(f"[Webhook] Transaction already exists for session {session_id}")
+    # Always set products, even on retry (get_or_create kept empty if first call crashed)
+    transaction.products.set(products)
+    logger.info(f"[Webhook] Transaction {'created' if created else 'updated'} #{transaction.id} for session {session_id}")
 
     # Create Furgonetka package
     package_id = None
@@ -235,10 +231,12 @@ def handle_checkout_completed(session: dict) -> None:
                 )
                 logger.info(f"[Furgonetka] Package {package_id} created for session {session_id}")
 
-            # Update transaction with tracking info
+            # Always update transaction fields (critical on retry - first call may have left empty data)
             if tracking_number:
                 transaction.tracking_number = tracking_number
-                transaction.save(update_fields=["tracking_number"])
+            transaction.total_amount = total_amount
+            transaction.shipping_address = shipping_address
+            transaction.save()
 
         except Exception as e:
             # Log error but don't raise - Stripe requires 200 response
