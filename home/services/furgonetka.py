@@ -152,25 +152,37 @@ class FurgonetkaService:
         data = r.json()
         return data.get("points", [])
 
-    def create_package_from_stripe_session(self, session: dict) -> dict:
+    def create_package_from_stripe_session(self, session: dict, pi_shipping: dict = None) -> dict:
         """
         Główna metoda. Przyjmuje surowy Stripe checkout.session
         i tworzy przesyłkę w Furgonetce. Nie dotyka bazy danych.
-        Zwraca pełny response z Furgonetki (zawiera package_id).
+
+        Args:
+            session: Stripe checkout.session object (from webhook)
+            pi_shipping: Optional dict z PaymentIntent.shipping.
+                        Webhook payload nie ma shipping_details, więc pobieramy
+                        z PaymentIntent który został utworzony podczas checkout.
         """
         # — Wyciągnij dane z Stripe session —
-        # Uwaga: shipping_details jest na top-level session (nie w collected_information)
         shipping = session.get("shipping_details", {})
         address = shipping.get("address", {})
         customer = session.get("customer_details", {})
 
-        # Receiver name from shipping details (recipient, not buyer)
-        receiver_name = shipping.get("name", "")
+        # Webhook payload nie ma shipping_details — użyj danych z PaymentIntent
+        if pi_shipping:
+            pi_addr = pi_shipping.get("address", {})
+            receiver_name = pi_shipping.get("name", shipping.get("name", ""))
+            receiver_street = pi_addr.get("line1", address.get("line1", ""))
+            receiver_city = pi_addr.get("city", address.get("city", ""))
+            receiver_postcode = pi_addr.get("postal_code", address.get("postal_code", ""))
+        else:
+            receiver_name = shipping.get("name", "")
+            receiver_street = address.get("line1", "")
+            receiver_city = address.get("city", "")
+            receiver_postcode = address.get("postal_code", "")
+
         receiver_email = customer.get("email", "")
         receiver_phone = customer.get("phone") or ""  # wymaga phone_number_collection!
-        receiver_street = address.get("line1", "")
-        receiver_city = address.get("city", "")
-        receiver_postcode = address.get("postal_code", "")
 
         # — Wybrana metoda wysyłki (zapisana w Stripe metadata podczas checkout) —
         metadata = session.get("metadata", {})

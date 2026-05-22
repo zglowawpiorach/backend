@@ -113,15 +113,31 @@ def handle_checkout_completed(session: dict) -> None:
     payment_intent_id = session.get("payment_intent")
     metadata = session.get("metadata", {})
 
-    # Debug: log raw shipping_details from Stripe
-    logger.info(f"[DEBUG] session_id={session_id} raw shipping_details: {repr(session.get('shipping_details'))}")
-
-    # Extract customer details
+    # Extract customer details from session (webhook payload may lack shipping_details)
     customer = _extract_customer_details(session)
     customer_email = customer["email"]
     customer_name = customer["name"]
     shipping_address = customer["shipping_address"]
     shipping_method = _get_shipping_method(metadata)
+
+    # Fallback: webhook payload often lacks shipping_details — retrieve from PaymentIntent
+    pi = None
+    pi_shipping = None
+    if not shipping_address and payment_intent_id:
+        try:
+            pi = stripe.PaymentIntent.retrieve(payment_intent_id)
+            pi_shipping = pi.get("shipping") or {}
+            if pi_shipping.get("address"):
+                addr = pi_shipping["address"]
+                parts = [addr.get("line1", "")]
+                if addr.get("line2"):
+                    parts.append(addr["line2"])
+                parts.append(f"{addr.get('postal_code', '')} {addr.get('city', '')}")
+                shipping_address = ", ".join(parts)
+                if not customer_name:
+                    customer_name = pi_shipping.get("name", "")
+        except Exception as e:
+            logger.warning(f"[Webhook] Could not retrieve PaymentIntent {payment_intent_id} for address: {e}")
 
     # Get product IDs from reservation or metadata
     product_ids = []
@@ -211,7 +227,8 @@ def handle_checkout_completed(session: dict) -> None:
     # Prevent duplicate package creation (check PaymentIntent metadata - session metadata is immutable)
     if payment_intent_id:
         try:
-            pi = stripe.PaymentIntent.retrieve(payment_intent_id)
+            if pi is None:
+                pi = stripe.PaymentIntent.retrieve(payment_intent_id)
             existing_package_id = pi.metadata.get("furgonetka_package_id", "")
             if existing_package_id:
                 logger.info(f"[Webhook] Package {existing_package_id} already exists for session {session_id}, skipping Furgonetka")
@@ -222,7 +239,7 @@ def handle_checkout_completed(session: dict) -> None:
     if not package_id:
         try:
             furgonetka = FurgonetkaService()
-            package = furgonetka.create_package_from_stripe_session(session)
+            package = furgonetka.create_package_from_stripe_session(session, pi_shipping)
             package_id = package.get("id") or package.get("package_id", "")
             tracking_number = package.get("tracking_number") or package.get("number", "") or package_id
 
