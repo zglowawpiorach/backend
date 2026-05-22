@@ -6,6 +6,7 @@ This module organizes all API views into logical groups:
 - checkout: Stripe checkout, reservations, basket management
 - coupon: Coupon validation
 - newsletter: Newsletter subscription
+- contact: Contact form
 - inpost: InPost Paczkomat location search
 """
 
@@ -19,6 +20,7 @@ from home.api.views.checkout import (
 )
 from home.api.views.coupon import validate_coupon
 from home.api.views.newsletter import subscribe_to_newsletter
+from home.api.views.contact import submit_contact_form
 from home.api.views.inpost import (
     search_inpost_points,
     get_inpost_point,
@@ -37,6 +39,8 @@ __all__ = [
     'validate_coupon',
     # Newsletter
     'subscribe_to_newsletter',
+    # Contact
+    'submit_contact_form',
     # InPost
     'search_inpost_points',
     'get_inpost_point',

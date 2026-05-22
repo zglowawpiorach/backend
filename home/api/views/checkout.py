@@ -375,7 +375,7 @@ def cleanup_expired_reservations(request):
 
     # Find pending/active reservations that have expired
     expired_reservations = Reservation.objects.filter(
-        status__in=['pending', 'active'],
+        status='pending',
         expires_at__lt=now
     )
 

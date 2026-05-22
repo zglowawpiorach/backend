@@ -209,3 +209,16 @@ class NewsletterSubscribeResponseSerializer(serializers.Serializer):
     success = serializers.BooleanField()
     contact_id = serializers.CharField(required=False, allow_null=True)
     error = serializers.CharField(required=False, allow_null=True)
+
+
+class ContactFormSerializer(serializers.Serializer):
+    """Serializer for contact form submissions."""
+    name = serializers.CharField(required=True, max_length=255)
+    email = serializers.EmailField(required=True)
+    message = serializers.CharField(required=True, max_length=5000)
+
+
+class ContactFormResponseSerializer(serializers.Serializer):
+    """Serializer for contact form response."""
+    success = serializers.BooleanField()
+    error = serializers.CharField(required=False, allow_null=True)

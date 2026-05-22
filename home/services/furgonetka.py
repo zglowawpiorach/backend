@@ -159,8 +159,8 @@ class FurgonetkaService:
         Zwraca pełny response z Furgonetki (zawiera package_id).
         """
         # — Wyciągnij dane z Stripe session —
-        collected = session.get("collected_information", {})
-        shipping = collected.get("shipping_details", {})
+        # Uwaga: shipping_details jest na top-level session (nie w collected_information)
+        shipping = session.get("shipping_details", {})
         address = shipping.get("address", {})
         customer = session.get("customer_details", {})
 

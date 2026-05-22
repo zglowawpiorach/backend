@@ -122,7 +122,7 @@ class Transaction(models.Model):
         from django.utils.html import format_html
 
         if self.status == TransactionStatus.SOLD:
-            url = reverse(f'admin_snippets_home_{self._meta.model_name}_mark_sent', args=[self.pk])
+            url = reverse(f'admin_snippets_home_{self._meta.model_name}:{self._meta.model_name}_mark_sent', args=[self.pk])
             return format_html(
                 '<a href="{}" class="button button-small button-primary" '
                 'onclick="return confirm(\'Czy na pewno oznaczyć jako wysłane i wysłać email do klienta?\')">'

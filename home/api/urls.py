@@ -16,6 +16,7 @@ from home.api.views import (
     search_inpost_points,
     get_inpost_point,
     subscribe_to_newsletter,
+    submit_contact_form,
 )
 from home.api.furgonetka_views import (
     orders,
@@ -44,6 +45,9 @@ urlpatterns = [
 
     # Newsletter subscription
     path('newsletter/subscribe/', subscribe_to_newsletter, name='subscribe_to_newsletter'),
+
+    # Contact form
+    path('contact/', submit_contact_form, name='submit_contact_form'),
 
     # Furgonetka integration endpoints (called BY Furgonetka)
     path('orders', orders, name='furgonetka_orders'),

@@ -209,11 +209,18 @@ def handle_checkout_completed(session: dict) -> None:
     package_id = None
     tracking_number = None
 
-    # Prevent duplicate package creation (check Stripe metadata)
-    if metadata.get("furgonetka_package_id"):
-        logger.info(f"[Webhook] Package already exists for session {session_id}, skipping Furgonetka")
-        package_id = metadata.get("furgonetka_package_id")
-    else:
+    # Prevent duplicate package creation (check PaymentIntent metadata - session metadata is immutable)
+    if payment_intent_id:
+        try:
+            pi = stripe.PaymentIntent.retrieve(payment_intent_id)
+            existing_package_id = pi.metadata.get("furgonetka_package_id", "")
+            if existing_package_id:
+                logger.info(f"[Webhook] Package {existing_package_id} already exists for session {session_id}, skipping Furgonetka")
+                package_id = existing_package_id
+        except Exception as e:
+            logger.warning(f"[Webhook] Could not check PaymentIntent metadata: {e}")
+
+    if not package_id:
         try:
             furgonetka = FurgonetkaService()
             package = furgonetka.create_package_from_stripe_session(session)

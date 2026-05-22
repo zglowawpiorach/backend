@@ -4,15 +4,17 @@ Brevo (Sendinblue) email service integration.
 Brevo API documentation: https://developers.brevo.com/
 
 This service handles:
-1. Order confirmation emails (Thank you for purchase)
-2. Package sent emails (with tracking)
+1. Order confirmation emails (Thank you for purchase) - uses Brevo templates
+2. Package sent emails (with tracking) - uses Brevo templates
+3. Contact form emails - sends HTML directly (no template needed)
+4. Newsletter subscriptions
 
 Configuration is stored in database via BrevoConfig model (Wagtail admin).
-Templates are managed in Brevo dashboard for full customization.
 """
 
 import logging
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, List
 
 from home.models import BrevoConfig
@@ -94,6 +96,70 @@ class BrevoService:
         }
 
         logger.info(f"[Brevo] Sending email to {to_email} (template={template_id})")
+        logger.debug(f"[Brevo] Email payload: {payload}")
+
+        try:
+            response = requests.post(
+                f"{self.BASE_URL}/smtp/email",
+                headers=self._headers(),
+                json=payload,
+                timeout=10,
+            )
+
+            if response.status_code >= 400:
+                logger.error(f"[Brevo] API error {response.status_code}: {response.text}")
+
+            response.raise_for_status()
+            data = response.json()
+            message_id = data.get("messageId")
+            logger.info(f"[Brevo] Email sent to {to_email}: messageId={message_id}")
+            return {"success": True, "message_id": message_id}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"[Brevo] Failed to send email to {to_email}: {e}")
+            if hasattr(e, "response") and e.response is not None:
+                logger.error(f"[Brevo] Response: {e.response.text}")
+            return {"success": False, "error": str(e)}
+
+    def send_html_email(
+        self,
+        to_email: str,
+        subject: str,
+        html_content: str,
+        to_name: Optional[str] = None,
+        reply_to: Optional[str] = None,
+    ) -> dict:
+        """
+        Send a transactional email with custom HTML content.
+
+        Args:
+            to_email: Recipient email address
+            subject: Email subject line
+            html_content: HTML content of the email
+            to_name: Recipient name (optional)
+            reply_to: Reply-to email address (optional)
+
+        Returns:
+            dict with 'success' boolean and 'message_id' or 'error'
+        """
+        if not self.is_configured():
+            logger.error("[Brevo] Not configured - missing API key or sender email")
+            return {"success": False, "error": "Brevo not configured"}
+
+        payload = {
+            "sender": {
+                "email": self.sender_email,
+                "name": self.sender_name,
+            },
+            "to": [{"email": to_email, "name": to_name or ""}],
+            "subject": subject,
+            "htmlContent": html_content,
+        }
+
+        if reply_to:
+            payload["replyTo"] = {"email": reply_to}
+
+        logger.info(f"[Brevo] Sending HTML email to {to_email}: {subject}")
         logger.debug(f"[Brevo] Email payload: {payload}")
 
         try:
@@ -313,6 +379,130 @@ class BrevoService:
             logger.error(f"[Brevo] Unexpected error subscribing {email}: {e}")
             return {"success": False, "error": str(e)}
 
+    def send_contact_emails(
+        self,
+        user_email: str,
+        user_name: str,
+        message: str,
+    ) -> dict:
+        """
+        Send contact form emails in parallel: notification to business and thank you to user.
+
+        Sends two emails simultaneously:
+        1. Notification to the business owner (sender_email) with the user's message
+        2. Thank you auto-reply to the user who filled the contact form
+
+        Args:
+            user_email: Email address of the person who filled the form
+            user_name: Name of the person who filled the form
+            message: The message from the contact form
+
+        Returns:
+            dict with 'success' boolean and optional 'error'
+        """
+        if not self.is_configured():
+            logger.error("[Brevo] Not configured - missing API key or sender email")
+            return {"success": False, "error": "Brevo not configured"}
+
+        results = {"success": True, "errors": []}
+        notification_result = None
+
+        # HTML template for notification to business owner
+        notification_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background-color: #f9f9f9; border-radius: 8px; padding: 30px; margin-top: 20px;">
+                <h2 style="color: #2c3e50; margin-bottom: 20px;">📬 Nowa wiadomość z formularza kontaktowego</h2>
+                <div style="background-color: white; border-radius: 6px; padding: 20px; margin-bottom: 20px;">
+                    <p style="margin: 10px 0;"><strong>Od:</strong> {user_name}</p>
+                    <p style="margin: 10px 0;"><strong>Email:</strong> <a href="mailto:{user_email}" style="color: #3498db;">{user_email}</a></p>
+                </div>
+                <div style="background-color: white; border-radius: 6px; padding: 20px;">
+                    <h3 style="color: #2c3e50; margin-top: 0;">Wiadomość:</h3>
+                    <p style="white-space: pre-wrap; color: #555;">{message}</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        # HTML template for thank you reply to user
+        reply_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background-color: #f9f9f9; border-radius: 8px; padding: 30px; margin-top: 20px;">
+                <h2 style="color: #2c3e50; margin-bottom: 20px;">✨ Dziękujemy za kontakt, {user_name}!</h2>
+                <div style="background-color: white; border-radius: 6px; padding: 20px;">
+                    <p style="margin-bottom: 15px;">Otrzymaliśmy Twoją wiadomość i odpowiemy najszybciej jak to możliwe.</p>
+                    <p style="margin-bottom: 15px;">Zazwyczaj odpowiadamy w ciągu 24 godzin w dni robocze.</p>
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+                    <p style="color: #666; font-size: 14px;">Z poważaniem,<br>{self.sender_name}</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        def send_notification():
+            """Send notification to business owner."""
+            return self.send_html_email(
+                to_email=self.sender_email,
+                to_name=self.sender_name,
+                subject=f"📬 Nowa wiadomość od {user_name}",
+                html_content=notification_html,
+                reply_to=user_email,
+            )
+
+        def send_reply():
+            """Send thank you reply to user."""
+            return self.send_html_email(
+                to_email=user_email,
+                to_name=user_name,
+                subject=f"Dziękujemy za kontakt! | {self.sender_name}",
+                html_content=reply_html,
+            )
+
+        # Send both emails in parallel
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = {
+                executor.submit(send_notification): "notification",
+                executor.submit(send_reply): "reply",
+            }
+
+            for future in as_completed(futures):
+                email_type = futures[future]
+                try:
+                    result = future.result()
+                    if email_type == "notification":
+                        notification_result = result
+                        if not result["success"]:
+                            logger.error(f"[Brevo] Failed to send contact notification to business: {result.get('error')}")
+                            results["errors"].append(f"Notification: {result.get('error')}")
+                    else:
+                        if not result["success"]:
+                            logger.error(f"[Brevo] Failed to send thank you reply to user: {result.get('error')}")
+                            results["errors"].append(f"Reply: {result.get('error')}")
+                except Exception as e:
+                    logger.error(f"[Brevo] Exception sending {email_type} email: {e}")
+                    results["errors"].append(f"{email_type.capitalize()}: {e}")
+
+        # Overall success if at least the notification was sent
+        results["success"] = notification_result["success"] if notification_result else False
+        if results["errors"]:
+            results["error"] = "; ".join(results["errors"])
+
+        return results
+
 
 # =============================================================================
 # JSON EXAMPLE FOR BREVO TEMPLATE TESTING
@@ -429,4 +619,23 @@ class BrevoService:
 #   {% else %}
 #     Dziękujemy za zamówienie!
 #   {% endif %}
+#
+# =============================================================================
+# CONTACT FORM EMAILS (HTML sent directly, no Brevo template needed)
+# =============================================================================
+#
+# Contact form sends two emails:
+# 1. Notification to business owner (sender_email) with customer's message
+# 2. Thank you auto-reply to the customer
+#
+# Both emails are sent in parallel and use inline HTML (no Brevo templates).
+#
+# EMAIL TO BUSINESS OWNER:
+#   Subject: "📬 Nowa wiadomość od {customer_name}"
+#   Reply-To: {customer_email}
+#   Body: Customer name, email, message in styled HTML
+#
+# EMAIL TO CUSTOMER:
+#   Subject: "Dziękujemy za kontakt! | {sender_name}"
+#   Body: Thank you message in styled HTML
 #
