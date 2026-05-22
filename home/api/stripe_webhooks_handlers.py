@@ -53,7 +53,12 @@ def _extract_customer_details(session: dict) -> dict:
     Returns dict with: email, name, shipping_address
     """
     customer_details = session.get("customer_details", {}) or {}
-    shipping_details = session.get("shipping_details", {}) or {}
+    # Stripe 2026-02-25.clover przeniosl shipping_details do collected_information
+    shipping_details = (
+        session.get("collected_information", {}).get("shipping_details", {})
+        or session.get("shipping_details", {})
+        or {}
+    )
 
     # Prefer shipping name over customer name (gift purchases)
     shipping_name = shipping_details.get("name", "")

@@ -164,7 +164,12 @@ class FurgonetkaService:
                         z PaymentIntent który został utworzony podczas checkout.
         """
         # — Wyciągnij dane z Stripe session —
-        shipping = session.get("shipping_details", {})
+        # Stripe 2026-02-25.clover przeniosl shipping_details do collected_information
+        shipping = (
+            session.get("collected_information", {}).get("shipping_details", {})
+            or session.get("shipping_details", {})
+            or {}
+        )
         address = shipping.get("address", {})
         customer = session.get("customer_details", {})
 
