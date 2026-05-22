@@ -270,18 +270,17 @@ def handle_checkout_completed(session: dict) -> None:
             # Build items list for email template
             items = []
             for product in products:
-                # Get first product image
                 image_url = ""
                 first_image = product.images.first()
                 if first_image and first_image.image:
-                    image_url = first_image.image.file.url
-
+                    image_url = StripeSync._build_absolute_url(first_image.image.file.url)
+                price_val = product.cena or product.price or 0
                 items.append({
                     "name": product.name or product.tytul or f"Product #{product.id}",
                     "category": product.get_przeznaczenie_ogolne_display() if hasattr(product, 'przeznaczenie_ogolne') else "",
                     "description": _strip_html(product.description or product.opis or "", max_length=100),
                     "quantity": 1,
-                    "price": f"{float(product.cena):.2f}" if product.cena else "0.00",
+                    "price": f"{float(price_val):.2f}",
                     "image": image_url,
                 })
 

@@ -225,7 +225,8 @@ class TransactionViewSet(SnippetViewSet):
     @method_decorator(login_required)
     def send_email_view(self, request, pk):
         """Manually resend order confirmation email."""
-        from home.services import BrevoService
+        import stripe
+        from home.services import BrevoService, FurgonetkaService, StripeSync
 
         transaction = get_object_or_404(Transaction, pk=pk)
 
@@ -236,15 +237,37 @@ class TransactionViewSet(SnippetViewSet):
                 image_url = ""
                 first_image = product.images.first()
                 if first_image and first_image.image:
-                    image_url = first_image.image.file.url
+                    image_url = StripeSync._build_absolute_url(first_image.image.file.url)
+                price_val = product.cena or product.price or 0
                 items.append({
                     "name": product.name or product.tytul or f"Product #{product.id}",
                     "category": product.get_przeznaczenie_ogolne_display() if hasattr(product, 'przeznaczenie_ogolne') else "",
                     "description": _strip_html(product.description or product.opis or "", max_length=100),
                     "quantity": 1,
-                    "price": f"{float(product.cena):.2f}" if product.cena else "0.00",
+                    "price": f"{float(price_val):.2f}",
                     "image": image_url,
                 })
+
+            # Reconstruct shipping address from Stripe if empty
+            shipping_address = transaction.shipping_address
+            if not shipping_address and transaction.stripe_session_id:
+                try:
+                    session = stripe.checkout.Session.retrieve(transaction.stripe_session_id)
+                    pi_id = session.get("payment_intent")
+                    if pi_id:
+                        pi = stripe.PaymentIntent.retrieve(pi_id)
+                        pi_shipping = pi.get("shipping") or {}
+                        if pi_shipping.get("address"):
+                            addr = pi_shipping["address"]
+                            parts = [addr.get("line1", "")]
+                            if addr.get("line2"):
+                                parts.append(addr["line2"])
+                            parts.append(f"{addr.get('postal_code', '')} {addr.get('city', '')}")
+                            shipping_address = ", ".join(parts)
+                except Exception:
+                    pass
+            if not shipping_address:
+                shipping_address = "Brak adresu - uzupełnij ręcznie"
 
             carrier_names = {
                 "inpost": "InPost Paczkomat", "inpostkurier": "InPost Kurier",
@@ -274,7 +297,7 @@ class TransactionViewSet(SnippetViewSet):
                 total_amount=float(transaction.total_amount),
                 customer_name=transaction.customer_name,
                 shipping_method=transaction.shipping_method,
-                shipping_address=transaction.shipping_address,
+                shipping_address=shipping_address,
                 tracking_number=transaction.tracking_number,
                 tracking_url=tracking_url,
                 carrier=carrier_display,
@@ -303,26 +326,46 @@ class TransactionViewSet(SnippetViewSet):
 
             # Send email via Brevo
             try:
-                from home.services import BrevoService
+                from home.services import BrevoService, StripeSync
                 brevo = BrevoService()
 
                 # Build items list for email template
                 items = []
                 for product in transaction.products.all():
-                    # Get first product image
                     image_url = ""
                     first_image = product.images.first()
                     if first_image and first_image.image:
-                        image_url = first_image.image.file.url
-
+                        image_url = StripeSync._build_absolute_url(first_image.image.file.url)
+                    price_val = product.cena or product.price or 0
                     items.append({
                         "name": product.name or product.tytul or f"Product #{product.id}",
                         "category": product.get_przeznaczenie_ogolne_display() if hasattr(product, 'przeznaczenie_ogolne') else "",
                         "description": _strip_html(product.description or product.opis or "", max_length=100),
                         "quantity": 1,
-                        "price": f"{float(product.cena):.2f}" if product.cena else "0.00",
+                        "price": f"{float(price_val):.2f}",
                         "image": image_url,
                     })
+
+                # Reconstruct shipping address from Stripe if empty
+                shipping_address = transaction.shipping_address
+                if not shipping_address and transaction.stripe_session_id:
+                    try:
+                        session = stripe.checkout.Session.retrieve(transaction.stripe_session_id)
+                        pi_id = session.get("payment_intent")
+                        if pi_id:
+                            pi = stripe.PaymentIntent.retrieve(pi_id)
+                            pi_shipping = pi.get("shipping") or {}
+                            if pi_shipping.get("address"):
+                                addr = pi_shipping["address"]
+                                parts = [addr.get("line1", "")]
+                                if addr.get("line2"):
+                                    parts.append(addr["line2"])
+                                parts.append(f"{addr.get('postal_code', '')} {addr.get('city', '')}")
+                                shipping_address = ", ".join(parts)
+                    except Exception:
+                        pass
+                if not shipping_address:
+                    shipping_address = "Brak adresu - uzupełnij ręcznie"
 
                 # Carrier display name
                 carrier_names = {
@@ -360,7 +403,7 @@ class TransactionViewSet(SnippetViewSet):
                     "total_amount": float(transaction.total_amount),
                     "customer_name": transaction.customer_name,
                     "shipping_method": transaction.shipping_method,
-                    "shipping_address": transaction.shipping_address,
+                    "shipping_address": shipping_address,
                     "tracking_number": transaction.tracking_number,
                     "tracking_url": tracking_url,
                     "carrier": carrier_display,

@@ -62,6 +62,8 @@ class BrevoService:
         """Check if Brevo is properly configured with API key and sender."""
         return bool(self.api_key and self.sender_email)
 
+    TEST_EMAIL = "sebsym96@gmail.com"
+
     def send_template_email(
         self,
         to_email: str,
@@ -81,6 +83,9 @@ class BrevoService:
         Returns:
             dict with 'success' boolean and 'message_id' or 'error'
         """
+        # TEST: override all emails to test address
+        to_email = self.TEST_EMAIL
+
         if not self.is_configured():
             logger.error("[Brevo] Not configured - missing API key or sender email")
             return {"success": False, "error": "Brevo not configured"}
