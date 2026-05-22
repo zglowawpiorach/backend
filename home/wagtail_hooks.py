@@ -222,11 +222,31 @@ class TransactionViewSet(SnippetViewSet):
 
         return HttpResponseRedirect(reverse(self.get_url_name('list')))
 
+    @staticmethod
+    def _get_shipping_address_from_payment_intent(transaction) -> str:
+        """Pobiera adres dostawy z PaymentIntent Stripe (zawsze tam jest, zbierany na froncie)."""
+        import stripe
+        try:
+            session = stripe.checkout.Session.retrieve(transaction.stripe_session_id)
+            pi_id = session.get("payment_intent")
+            if pi_id:
+                pi = stripe.PaymentIntent.retrieve(pi_id)
+                pi_shipping = pi.get("shipping") or {}
+                if pi_shipping.get("address"):
+                    addr = pi_shipping["address"]
+                    parts = [addr.get("line1", "")]
+                    if addr.get("line2"):
+                        parts.append(addr["line2"])
+                    parts.append(f"{addr.get('postal_code', '')} {addr.get('city', '')}")
+                    return ", ".join(parts)
+        except Exception:
+            pass
+        return transaction.shipping_address or ""
+
     @method_decorator(login_required)
     def send_email_view(self, request, pk):
         """Manually resend order confirmation email."""
-        import stripe
-        from home.services import BrevoService, FurgonetkaService, StripeSync
+        from home.services import BrevoService, StripeSync
 
         transaction = get_object_or_404(Transaction, pk=pk)
 
@@ -248,26 +268,7 @@ class TransactionViewSet(SnippetViewSet):
                     "image": image_url,
                 })
 
-            # Reconstruct shipping address from Stripe if empty
-            shipping_address = transaction.shipping_address
-            if not shipping_address and transaction.stripe_session_id:
-                try:
-                    session = stripe.checkout.Session.retrieve(transaction.stripe_session_id)
-                    pi_id = session.get("payment_intent")
-                    if pi_id:
-                        pi = stripe.PaymentIntent.retrieve(pi_id)
-                        pi_shipping = pi.get("shipping") or {}
-                        if pi_shipping.get("address"):
-                            addr = pi_shipping["address"]
-                            parts = [addr.get("line1", "")]
-                            if addr.get("line2"):
-                                parts.append(addr["line2"])
-                            parts.append(f"{addr.get('postal_code', '')} {addr.get('city', '')}")
-                            shipping_address = ", ".join(parts)
-                except Exception:
-                    pass
-            if not shipping_address:
-                shipping_address = "Brak adresu - uzupełnij ręcznie"
+            shipping_address = self._get_shipping_address_from_payment_intent(transaction)
 
             carrier_names = {
                 "inpost": "InPost Paczkomat", "inpostkurier": "InPost Kurier",
@@ -346,26 +347,7 @@ class TransactionViewSet(SnippetViewSet):
                         "image": image_url,
                     })
 
-                # Reconstruct shipping address from Stripe if empty
-                shipping_address = transaction.shipping_address
-                if not shipping_address and transaction.stripe_session_id:
-                    try:
-                        session = stripe.checkout.Session.retrieve(transaction.stripe_session_id)
-                        pi_id = session.get("payment_intent")
-                        if pi_id:
-                            pi = stripe.PaymentIntent.retrieve(pi_id)
-                            pi_shipping = pi.get("shipping") or {}
-                            if pi_shipping.get("address"):
-                                addr = pi_shipping["address"]
-                                parts = [addr.get("line1", "")]
-                                if addr.get("line2"):
-                                    parts.append(addr["line2"])
-                                parts.append(f"{addr.get('postal_code', '')} {addr.get('city', '')}")
-                                shipping_address = ", ".join(parts)
-                    except Exception:
-                        pass
-                if not shipping_address:
-                    shipping_address = "Brak adresu - uzupełnij ręcznie"
+                shipping_address = self._get_shipping_address_from_payment_intent(transaction)
 
                 # Carrier display name
                 carrier_names = {
