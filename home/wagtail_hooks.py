@@ -149,7 +149,7 @@ class TransactionViewSet(SnippetViewSet):
     menu_name = 'transactions'
     menu_order = 205
     add_to_admin_menu = True
-    list_display = ['id', 'customer_email', 'get_products_display', 'total_amount', 'status', 'created_at', 'mark_sent_action']
+    list_display = ['id', 'customer_email', 'get_products_display', 'total_amount', 'status', 'created_at', 'send_package_action', 'send_email_action', 'mark_sent_action']
     list_filter = ['status', 'created_at']
     search_fields = ['customer_email', 'stripe_session_id', 'customer_name']
     readonly_fields = ['stripe_session_id', 'customer_email', 'customer_name', 'products', 'shipping_method', 'shipping_address', 'total_amount', 'created_at']
@@ -178,13 +178,116 @@ class TransactionViewSet(SnippetViewSet):
     def get_urlpatterns(self):
         urls = super().get_urlpatterns()
         urls += [
-            path(
-                f'mark-sent/<int:pk>/',
-                self.mark_sent_view,
-                name='mark_sent'
-            ),
+            path(f'mark-sent/<int:pk>/', self.mark_sent_view, name='mark_sent'),
+            path(f'send-package/<int:pk>/', self.send_package_view, name='send_package'),
+            path(f'send-email/<int:pk>/', self.send_email_view, name='send_email'),
         ]
         return urls
+
+    @method_decorator(login_required)
+    def send_package_view(self, request, pk):
+        """Manually create/retry Furgonetka package for a transaction."""
+        import stripe
+        from home.services import FurgonetkaService
+
+        transaction = get_object_or_404(Transaction, pk=pk)
+        try:
+            session = stripe.checkout.Session.retrieve(transaction.stripe_session_id)
+
+            pi_shipping = None
+            payment_intent_id = session.get("payment_intent")
+            if payment_intent_id:
+                try:
+                    pi = stripe.PaymentIntent.retrieve(payment_intent_id)
+                    pi_shipping = pi.get("shipping") or {}
+                except Exception:
+                    pass
+
+            furgonetka = FurgonetkaService()
+            package = furgonetka.create_package_from_stripe_session(session, pi_shipping)
+            package_id = package.get("id") or package.get("package_id", "")
+            tracking_number = package.get("tracking_number") or package.get("number", "") or package_id
+
+            if tracking_number:
+                transaction.tracking_number = tracking_number
+                transaction.save(update_fields=["tracking_number"])
+
+            messages.success(
+                request,
+                f"Paczka utworzona dla transakcji #{transaction.id}. "
+                f"Nr śledzenia: {tracking_number}"
+            )
+        except Exception as e:
+            messages.error(request, f"Błąd tworzenia paczki: {e}")
+
+        return HttpResponseRedirect(reverse(self.get_url_name('list')))
+
+    @method_decorator(login_required)
+    def send_email_view(self, request, pk):
+        """Manually resend order confirmation email."""
+        from home.services import BrevoService
+
+        transaction = get_object_or_404(Transaction, pk=pk)
+
+        try:
+            brevo = BrevoService()
+            items = []
+            for product in transaction.products.all():
+                image_url = ""
+                first_image = product.images.first()
+                if first_image and first_image.image:
+                    image_url = first_image.image.file.url
+                items.append({
+                    "name": product.name or product.tytul or f"Product #{product.id}",
+                    "category": product.get_przeznaczenie_ogolne_display() if hasattr(product, 'przeznaczenie_ogolne') else "",
+                    "description": _strip_html(product.description or product.opis or "", max_length=100),
+                    "quantity": 1,
+                    "price": f"{float(product.cena):.2f}" if product.cena else "0.00",
+                    "image": image_url,
+                })
+
+            carrier_names = {
+                "inpost": "InPost Paczkomat", "inpostkurier": "InPost Kurier",
+                "dpd": "Kurier DPD", "ups": "Kurier UPS",
+                "gls": "Kurier GLS", "fedex": "Kurier FedEx",
+                "dhl": "Kurier DHL", "poczta": "Poczta Polska", "orlen": "Orlen Paczka",
+            }
+            carrier_display = carrier_names.get(transaction.carrier, transaction.carrier or "Kurier")
+
+            tracking_urls = {
+                "inpost": f"https://inpost.pl/sledzenie-przesylek?number={transaction.tracking_number}",
+                "inpostkurier": f"https://inpost.pl/sledzenie-przesylek?number={transaction.tracking_number}",
+                "dpd": f"https://tracktrace.dpd.com.pl/parcelDetails?p1={transaction.tracking_number}",
+                "ups": f"https://www.ups.com/track?tracknum={transaction.tracking_number}",
+                "gls": f"https://gls-group.eu/PL/pl/sledzenie-paczek?match={transaction.tracking_number}",
+                "fedex": f"https://www.fedex.com/fedextrack/?trknbr={transaction.tracking_number}",
+                "dhl": f"https://www.dhl.com/pl-pl/home/tracking/tracking-parcel.html?submit=1&tracking-id={transaction.tracking_number}",
+                "poczta": f"https://emonitoring.poczta-polska.pl/?numer={transaction.tracking_number}",
+                "orlen": f"https://orlenpaczka.pl/sledzenie/{transaction.tracking_number}",
+            }
+            tracking_url = tracking_urls.get(transaction.carrier, "")
+
+            result = brevo.send_order_email(
+                email=transaction.customer_email,
+                order_id=str(transaction.id),
+                products=items,
+                total_amount=float(transaction.total_amount),
+                customer_name=transaction.customer_name,
+                shipping_method=transaction.shipping_method,
+                shipping_address=transaction.shipping_address,
+                tracking_number=transaction.tracking_number,
+                tracking_url=tracking_url,
+                carrier=carrier_display,
+            )
+
+            if result.get("success"):
+                messages.success(request, f"Email wysłany do {transaction.customer_email}")
+            else:
+                messages.error(request, f"Błąd wysyłania emaila: {result.get('error')}")
+        except Exception as e:
+            messages.error(request, f"Błąd wysyłania emaila: {e}")
+
+        return HttpResponseRedirect(reverse(self.get_url_name('list')))
 
     @method_decorator(login_required)
     def mark_sent_view(self, request, pk):

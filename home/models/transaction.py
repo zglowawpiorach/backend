@@ -116,6 +116,32 @@ class Transaction(models.Model):
         )
     get_products_display.short_description = "Produkty"
 
+    def send_package_action(self) -> str:
+        from django.urls import reverse
+        from django.utils.html import format_html
+        url = reverse(f'wagtailsnippets_{self._meta.app_label}_{self._meta.model_name}:send_package', args=[self.pk])
+        return format_html(
+            '<a href="{}" class="button button-small button-secondary" '
+            'onclick="return confirm(\'Czy na pewno utworzyć paczkę w Furgonetce?\')">'
+            'Wyślij paczkę'
+            '</a>',
+            url
+        )
+    send_package_action.short_description = "Paczka"
+
+    def send_email_action(self) -> str:
+        from django.urls import reverse
+        from django.utils.html import format_html
+        url = reverse(f'wagtailsnippets_{self._meta.app_label}_{self._meta.model_name}:send_email', args=[self.pk])
+        return format_html(
+            '<a href="{}" class="button button-small button-secondary" '
+            'onclick="return confirm(\'Czy na pewno wysłać email potwierdzenia do klienta?\')">'
+            'Wyślij email'
+            '</a>',
+            url
+        )
+    send_email_action.short_description = "Email"
+
     def mark_sent_action(self) -> str:
         """Return HTML for mark as sent button or status indicator."""
         from django.urls import reverse
