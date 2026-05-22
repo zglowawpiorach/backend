@@ -265,7 +265,7 @@ def handle_checkout_completed(session: dict) -> None:
 
         except Exception as e:
             # Log error but don't raise - Stripe requires 200 response
-            logger.error(f"[Furgonetka] Failed for session {session_id}: {e}")
+            logger.exception(f"[Furgonetka] Failed to create package for session {session_id}")
 
     # Send order confirmation email via Brevo
     if customer_email:
