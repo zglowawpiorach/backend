@@ -279,7 +279,7 @@ class TransactionViewSet(SnippetViewSet):
                 messages.error(request, f"Błąd wysyłania emaila: {e}")
 
         # Redirect back to list view
-        return HttpResponseRedirect(reverse('admin_snippets_home_transaction:list'))
+        return HttpResponseRedirect(reverse(f'wagtailsnippets_home_{Transaction._meta.model_name}:list'))
 
 
 register_snippet(ProductViewSet)
