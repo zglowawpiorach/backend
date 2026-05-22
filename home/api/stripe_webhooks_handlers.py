@@ -113,6 +113,9 @@ def handle_checkout_completed(session: dict) -> None:
     payment_intent_id = session.get("payment_intent")
     metadata = session.get("metadata", {})
 
+    # Debug: log raw shipping_details from Stripe
+    logger.info(f"[DEBUG] session_id={session_id} raw shipping_details: {repr(session.get('shipping_details'))}")
+
     # Extract customer details
     customer = _extract_customer_details(session)
     customer_email = customer["email"]
