@@ -10,7 +10,7 @@ Usage:
 
 import logging
 import requests
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from home.models import InPostPoint
@@ -41,11 +41,21 @@ class Command(BaseCommand):
             default=1000,
             help='Batch size for database operations'
         )
+        parser.add_argument(
+            '--skip-if-populated',
+            action='store_true',
+            default=False,
+            help='Skip sync if InPostPoint table is non-empty'
+        )
 
     def handle(self, *args, **options):
         url = options['url']
         dry_run = options['dry_run']
         batch_size = options['batch_size']
+
+        if options['skip_if_populated'] and InPostPoint.objects.exists():
+            self.stdout.write(self.style.SUCCESS('InPostPoint table already populated, skipping sync.'))
+            return
 
         self.stdout.write(f"Fetching InPost points from: {url}")
 
@@ -55,10 +65,10 @@ class Command(BaseCommand):
             data = response.json()
         except requests.RequestException as e:
             self.stdout.write(self.style.ERROR(f"Failed to fetch data: {e}"))
-            return
+            raise CommandError(f"Failed to fetch data: {e}")
         except ValueError as e:
             self.stdout.write(self.style.ERROR(f"Failed to parse JSON: {e}"))
-            return
+            raise CommandError(f"Failed to parse JSON: {e}")
 
         # Data is a dict with 'items' key
         if isinstance(data, dict):
@@ -70,7 +80,7 @@ class Command(BaseCommand):
             self.stdout.write(f"Found {len(items)} points in feed")
         else:
             self.stdout.write(self.style.ERROR(f"Unexpected data format: {type(data)}"))
-            return
+            raise CommandError(f"Unexpected data format: {type(data)}")
 
         if dry_run:
             self.stdout.write(self.style.WARNING("DRY RUN - no changes will be made"))

@@ -264,7 +264,7 @@ class FurgonetkaService:
         pickup_point = PickupPoint.get_default() or PickupPoint.get_first_active()
         if not pickup_point:
             raise ValueError("Brak skonfigurowanego punktu nadania. Dodaj PickupPoint w adminie.")
-        if not pickup_point.point:
+        if not pickup_point.point.strip():
             raise ValueError(
                 f"Punkt nadania '{pickup_point.name}' nie ma ustawionego kodu paczkomatu (pole 'point'). "
                 f"Bez kodu paczkomatu Furgonetka tworzy przesyłkę z odbiorem kuriera pod adres nadawcy. "

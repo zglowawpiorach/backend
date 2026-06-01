@@ -44,7 +44,7 @@ class PickupPoint(models.Model):
     )
     is_default = models.BooleanField(
         default=False,
-        verbose_name="Domyślny punkt odbioru"
+        verbose_name="Domyślny punkt nadania"
     )
     active = models.BooleanField(
         default=True,
@@ -76,10 +76,7 @@ class PickupPoint(models.Model):
     @classmethod
     def get_default(cls):
         """Get the default pickup point or None."""
-        try:
-            return cls.objects.filter(active=True, is_default=True).first()
-        except cls.DoesNotExist:
-            return None
+        return cls.objects.filter(active=True, is_default=True).first()
 
     @classmethod
     def get_first_active(cls):
@@ -91,8 +88,8 @@ class PickupPoint(models.Model):
 
     class Meta:
         ordering = ['-is_default', 'name']
-        verbose_name = "Punkt odbioru"
-        verbose_name_plural = "Punkty odbioru"
+        verbose_name = "Punkt nadania"
+        verbose_name_plural = "Punkty nadania"
 
 
 class InPostPoint(models.Model):
