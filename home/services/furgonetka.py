@@ -260,10 +260,16 @@ class FurgonetkaService:
                     f"Dodaj FurgonetkaService w adminie."
                 )
 
-        # — Pobierz domyślny punkt odbioru —
+        # — Pobierz domyślny punkt nadania (paczkomat do nadania paczek) —
         pickup_point = PickupPoint.get_default() or PickupPoint.get_first_active()
         if not pickup_point:
-            raise ValueError("Brak skonfigurowanego punktu odbioru. Dodaj PickupPoint w adminie.")
+            raise ValueError("Brak skonfigurowanego punktu nadania. Dodaj PickupPoint w adminie.")
+        if not pickup_point.point:
+            raise ValueError(
+                f"Punkt nadania '{pickup_point.name}' nie ma ustawionego kodu paczkomatu (pole 'point'). "
+                f"Bez kodu paczkomatu Furgonetka tworzy przesyłkę z odbiorem kuriera pod adres nadawcy. "
+                f"Ustaw kod paczkomatu (np. 'ADA01N') w adminie → PickupPoint → {pickup_point.name}."
+            )
 
         # User reference number max 36 chars - use last 36 chars of session ID
         session_id = session["id"]
@@ -313,9 +319,10 @@ class FurgonetkaService:
             payload["receiver"]["point"] = locker_id
             logger.info(f"[Furgonetka] Adding locker/point: {locker_id}")
 
-        # Add pickup point if configured
-        if pickup_point.point:
-            payload["pickup"]["point"] = pickup_point.point
+        # Always set pickup point — this tells Furgonetka the sender will drop off
+        # at this paczkomat instead of requesting courier pickup at home address
+        payload["pickup"]["point"] = pickup_point.point
+        logger.info(f"[Furgonetka] Pickup point (sender dropoff): {pickup_point.point}")
 
         logger.info(f"[Furgonetka] Creating package with payload: {payload}")
         logger.info(f"[Furgonetka] POST to: {self.BASE_URL}/packages")

@@ -9,8 +9,10 @@ class PickupPoint(models.Model):
     """
     Pickup location for Furgonetka shipments.
 
-    Defines where packages will be collected by the courier.
-    Can be a home/business address or a parcel locker point.
+    Defines where packages will be dropped off by the sender.
+    The 'point' field must contain a valid paczkomat code (e.g. 'ADA01N')
+    so that Furgonetka creates a sender-dropoff shipment instead of
+    dispatching a courier to pick up from the address.
     """
     name = models.CharField(
         max_length=100,
@@ -35,7 +37,10 @@ class PickupPoint(models.Model):
         max_length=50,
         blank=True,
         verbose_name="Kod punktu (opcjonalnie)",
-        help_text="Kod paczkomatu/punktu np. 'ADA01N' dla InPost"
+        help_text=(
+            "Kod paczkomatu/punktu np. 'ADA01N' dla InPost. "
+            "Wymagany — bez kodu Furgonetka tworzy przesyłkę z odbiorem kuriera pod adres."
+        )
     )
     is_default = models.BooleanField(
         default=False,
