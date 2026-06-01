@@ -90,7 +90,10 @@ class Command(BaseCommand):
         # Process in transaction
         with transaction.atomic():
             # Get existing point names
-            existing_names = set(InPostPoint.objects.values_list('name', flat=True))
+            existing_objects = {
+                obj.name: obj
+                for obj in InPostPoint.objects.filter(name__in=[item.get('n', '') for item in items if item.get('n')])
+            }
             new_count = 0
             updated_count = 0
 
@@ -122,8 +125,18 @@ class Command(BaseCommand):
                     'active': item.get('s', 0) == 1,
                 }
 
-                if name in existing_names:
-                    points_to_update.append((name, point_data))
+                if name in existing_objects:
+                    obj = existing_objects[name]
+                    obj.street = point_data['street']
+                    obj.building_number = point_data['building_number']
+                    obj.postcode = point_data['postcode']
+                    obj.city = point_data['city']
+                    obj.latitude = point_data['latitude']
+                    obj.longitude = point_data['longitude']
+                    obj.location_description = point_data['location_description']
+                    obj.opening_hours = point_data['opening_hours']
+                    obj.active = point_data['active']
+                    points_to_update.append(obj)
                 else:
                     points_to_create.append(InPostPoint(name=name, **point_data))
 
@@ -135,8 +148,10 @@ class Command(BaseCommand):
 
                 # Batch update
                 if len(points_to_update) >= batch_size:
-                    for n, pd in points_to_update:
-                        InPostPoint.objects.filter(name=n).update(**pd)
+                    InPostPoint.objects.bulk_update(
+                        points_to_update,
+                        ['street', 'building_number', 'postcode', 'city', 'latitude', 'longitude', 'location_description', 'opening_hours', 'active']
+                    )
                     updated_count += len(points_to_update)
                     points_to_update = []
 
@@ -145,9 +160,12 @@ class Command(BaseCommand):
                 InPostPoint.objects.bulk_create(points_to_create)
                 new_count += len(points_to_create)
 
-            for n, pd in points_to_update:
-                InPostPoint.objects.filter(name=n).update(**pd)
-            updated_count += len(points_to_update)
+            if points_to_update:
+                InPostPoint.objects.bulk_update(
+                    points_to_update,
+                    ['street', 'building_number', 'postcode', 'city', 'latitude', 'longitude', 'location_description', 'opening_hours', 'active']
+                )
+                updated_count += len(points_to_update)
 
         self.stdout.write(
             self.style.SUCCESS(

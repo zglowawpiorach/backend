@@ -1,6 +1,6 @@
 """Shipping and pickup point models."""
 
-from django.db import models
+from django.db import models, transaction
 from wagtail.admin.panels import FieldPanel, MultiFieldPanel
 from home.widgets import InPostSearchWidget
 
@@ -67,10 +67,11 @@ class PickupPoint(models.Model):
         ], heading="Adres"),
     ]
 
+    @transaction.atomic
     def save(self, *args, **kwargs):
         # Ensure only one default pickup point
         if self.is_default:
-            PickupPoint.objects.filter(is_default=True).update(is_default=False)
+            PickupPoint.objects.exclude(pk=self.pk).filter(is_default=True).update(is_default=False)
         super().save(*args, **kwargs)
 
     @classmethod

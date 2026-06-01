@@ -56,7 +56,11 @@ class FurgonetkaService:
 
         refresh = cache.get("furgonetka_refresh")
         if refresh:
-            return self._refresh(refresh)
+            try:
+                return self._refresh(refresh)
+            except Exception:
+                logger.warning("[Furgonetka] Refresh failed, falling back to login")
+                cache.delete("furgonetka_refresh")
 
         return self._login()
 
@@ -78,6 +82,7 @@ class FurgonetkaService:
                 "username": self.config.username,
                 "password": self.config.password,
             },
+            timeout=30,
         )
 
         if not r.ok:
@@ -87,21 +92,34 @@ class FurgonetkaService:
 
         r.raise_for_status()
         data = r.json()
-        cache.set("furgonetka_token", data["access_token"], 29 * 86400)
-        cache.set("furgonetka_refresh", data["refresh_token"], 88 * 86400)
-        return data["access_token"]
+        access_token = data.get("access_token")
+        if not access_token:
+            raise ValueError(f"No access_token in response: {data}")
+        refresh_token = data.get("refresh_token")
+        if not refresh_token:
+            raise ValueError(f"No refresh_token in response: {data}")
+        cache.set("furgonetka_token", access_token, 29 * 86400)
+        cache.set("furgonetka_refresh", refresh_token, 88 * 86400)
+        return access_token
 
     def _refresh(self, refresh_token: str) -> str:
         r = requests.post(
             f"{self.BASE_URL}/oauth/token",
             headers={"Authorization": f"Basic {self._basic_auth()}"},
             data={"grant_type": "refresh_token", "refresh_token": refresh_token},
+            timeout=30,
         )
         r.raise_for_status()
         data = r.json()
-        cache.set("furgonetka_token", data["access_token"], 29 * 86400)
-        cache.set("furgonetka_refresh", data["refresh_token"], 88 * 86400)
-        return data["access_token"]
+        access_token = data.get("access_token")
+        if not access_token:
+            raise ValueError(f"No access_token in response: {data}")
+        refresh_token_new = data.get("refresh_token")
+        if not refresh_token_new:
+            raise ValueError(f"No refresh_token in response: {data}")
+        cache.set("furgonetka_token", access_token, 29 * 86400)
+        cache.set("furgonetka_refresh", refresh_token_new, 88 * 86400)
+        return access_token
 
     def _headers(self) -> dict:
         return {
@@ -111,7 +129,7 @@ class FurgonetkaService:
 
     def get_services(self) -> list:
         """Pobierz dostępne metody wysyłki — wywołaj raz żeby zobaczyć service_id."""
-        r = requests.get(f"{self.BASE_URL}/account/services", headers=self._headers(), json={})
+        r = requests.get(f"{self.BASE_URL}/account/services", headers=self._headers(), json={}, timeout=30)
         r.raise_for_status()
         return r.json()
 
@@ -169,6 +187,7 @@ class FurgonetkaService:
             f"{self.BASE_URL}/points/map",
             headers=self._headers(),
             json=payload,
+            timeout=30,
         )
 
         logger.info(f"[Furgonetka] Points search response: {r.status_code}")
@@ -254,7 +273,7 @@ class FurgonetkaService:
             try:
                 service_obj = FurgonetkaServiceModel.objects.get(name__iexact=service_name, active=True)
                 service_id = int(service_obj.service_id)
-            except FurgonetkaServiceModel.DoesNotExist:
+            except (FurgonetkaServiceModel.DoesNotExist, FurgonetkaServiceModel.MultipleObjectsReturned):
                 raise ValueError(
                     f"Nie znaleziono usługi '{service_name}'. "
                     f"Dodaj FurgonetkaService w adminie."
@@ -272,7 +291,9 @@ class FurgonetkaService:
             )
 
         # User reference number max 36 chars - use last 36 chars of session ID
-        session_id = session["id"]
+        session_id = session.get("id")
+        if not session_id:
+            raise ValueError("Stripe session is missing 'id' field")
         user_ref = session_id[-36:] if len(session_id) > 36 else session_id
 
         payload = {
@@ -327,7 +348,7 @@ class FurgonetkaService:
         logger.info(f"[Furgonetka] Creating package with payload: {payload}")
         logger.info(f"[Furgonetka] POST to: {self.BASE_URL}/packages")
 
-        r = requests.post(f"{self.BASE_URL}/packages", headers=self._headers(), json=payload)
+        r = requests.post(f"{self.BASE_URL}/packages", headers=self._headers(), json=payload, timeout=30)
 
         logger.info(f"[Furgonetka] Response status: {r.status_code}")
         logger.info(f"[Furgonetka] Response body: {r.text[:500] if r.text else 'empty'}")
