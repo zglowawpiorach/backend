@@ -1,32 +1,18 @@
 {% load wagtailadmin_tags %}
 <div class="w-field" data-controller="inpost-search">
-    <label class="w-field__label" for="{{ field.id_for_label }}">
-        {{ field.label }}
-        {% if field.field.required %}<span class="w-required-mark">*</span>{% endif %}
-    </label>
-
     <div class="inpost-search-wrapper">
-        <input type="text"
-               id="{{ field.id_for_label }}"
-               name="{{ field.html_name }}"
-               value="{{ field.value|default:'' }}"
+        <input type="{{ widget.type }}"
+               name="{{ widget.name }}"
+               value="{{ widget.value|default_if_none:'' }}"
+               {% include "django/forms/widgets/attrs.html" %}
                placeholder="Wpisz kod paczkomatu lub miasto (min. 2 znaki)..."
                class="w-field__input"
                data-inpost-search-target="input"
                autocomplete="off">
 
         <div class="inpost-search-results" data-inpost-search-target="results" style="display: none;">
-            <!-- Results will be populated by JS -->
         </div>
     </div>
-
-    {% if field.help_text %}
-    <p class="w-field__help">{{ field.help_text }}</p>
-    {% endif %}
-
-    {% for error in field.errors %}
-    <p class="w-field__error">{{ error }}</p>
-    {% endfor %}
 </div>
 
 <style>
@@ -103,7 +89,7 @@
                         if (data.length === 0) {
                             const noResult = document.createElement('div');
                             noResult.className = 'inpost-search-result';
-                            noResult.textContent = 'Brak wyników';
+                            noResult.textContent = 'Brak wynik\u00f3w';
                             resultsDiv.appendChild(noResult);
                             resultsDiv.style.display = 'block';
                             return;
