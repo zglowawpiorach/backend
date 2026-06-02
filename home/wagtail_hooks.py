@@ -4,6 +4,8 @@ import re
 from wagtail.snippets.models import register_snippet
 from wagtail.snippets.views.snippets import SnippetViewSet
 from wagtail.admin.panels import FieldPanel, MultiFieldPanel
+from django import forms
+from home.widgets import InPostSearchWidget
 from wagtail import hooks
 from wagtail.admin.action_menu import ActionMenuItem
 from wagtail.admin.ui.tables import Column
@@ -98,8 +100,17 @@ class CouponViewSet(SnippetViewSet):
     search_fields = ['code']
 
 
+
+class PickupPointForm(forms.ModelForm):
+    class Meta:
+        model = PickupPoint
+        fields = '__all__'
+        widgets = {
+            'point': InPostSearchWidget(),
+        }
 class PickupPointViewSet(SnippetViewSet):
     model = PickupPoint
+    form_class = PickupPointForm
     icon = 'site'
     menu_label = 'Punkty odbioru'
     menu_name = 'pickup_points'
